@@ -362,19 +362,13 @@ export default function HeroScreen({
       </View>
 
       {/* ---- AI Headline ---- */}
-      <Text style={styles.headline}>
-        {wx.headline.pre}{' '}
-        <Text
-          style={
-            outline
-              ? styles.headlineEmOutline
-              : styles.headlineEm
-          }
-        >
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', maxWidth: SCREEN_W - 48, marginBottom: 12 }}>
+        <Text style={styles.headline}>{wx.headline.pre} </Text>
+        <Text style={[styles.headline, outline && styles.headlineEmOutline]}>
           {wx.headline.em}
-        </Text>{' '}
-        {wx.headline.post}
-      </Text>
+        </Text>
+        <Text style={styles.headline}> {wx.headline.post}</Text>
+      </View>
 
       {/* ---- AI Summary ---- */}
       <Text style={styles.summary}>{wx.summary}</Text>
@@ -521,18 +515,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     maxWidth: SCREEN_W - 48,
   },
-  headlineEm: {
-    fontFamily: FONT_BOLD,
-    fontWeight: '800',
-    color: INK,
-  },
   headlineEmOutline: {
     fontFamily: FONT_BOLD,
     fontWeight: '800',
-    color: 'transparent',
-    textShadowColor: INK,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 1.5,
+    color: 'rgba(21,19,26,0.22)',
   },
 
   // ---- Summary ----
