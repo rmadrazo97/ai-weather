@@ -267,12 +267,12 @@ const CitySheet: React.FC<CitySheetProps> = ({
                   <View style={styles.cityInfo}>
                     <Text style={styles.cityName}>{city.name}</Text>
                     <Text style={styles.citySub}>
-                      {getCityLabel(city.cond)} \u00b7 Humidity {getCityHumidity(city.cond)}%
+                      {getCityLabel(city.cond)} · Humidity {getCityHumidity(city.cond)}%
                     </Text>
                   </View>
                 </View>
                 <View style={styles.cityRight}>
-                  <Text style={styles.cityTemp}>{getCityTemp(city.cond, unit)}\u00b0</Text>
+                  <Text style={styles.cityTemp}>{getCityTemp(city.cond, unit)}°</Text>
                   {city.custom && (
                     <TouchableOpacity
                       style={styles.removeBtn}

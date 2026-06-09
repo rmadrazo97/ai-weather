@@ -365,7 +365,7 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
               <Text style={styles.headerTitle}>WeatherAI</Text>
               {wx && (
                 <Text style={styles.headerSubtitle}>
-                  {wx.location} \u00b7 {wx.time}
+                  {wx.location} · {wx.time}
                 </Text>
               )}
             </View>
