@@ -47,3 +47,4 @@ functions/.env*
 !functions/.env.local.example
 .firebase/
 secrets/
+builds/
