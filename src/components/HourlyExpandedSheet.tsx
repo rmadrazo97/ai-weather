@@ -21,9 +21,9 @@ import Svg, {
   Rect,
 } from 'react-native-svg';
 import WeatherIcon from './WeatherIcon';
-import { wxDaySeries } from '../data/weatherData';
-import type { WeatherScenario, HourlyEntry, Condition } from '../data/weatherData';
+import type { WeatherScenario, Condition } from '../data/weatherData';
 import { fmtTemp } from '../utils/helpers';
+import { INK, MUTED, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -31,9 +31,6 @@ import { fmtTemp } from '../utils/helpers';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SHEET_H = SCREEN_H * 0.92;
-const INK = '#15131a';
-const MUTED = 'rgba(21,19,26,0.55)';
-const HAIR = 'rgba(21,19,26,0.13)';
 
 // Chart layout
 const CHART_PAD_L = 12;
@@ -50,7 +47,7 @@ const PLOT_H = CHART_H - CHART_PAD_T - CHART_PAD_B;
 // ---------------------------------------------------------------------------
 
 interface HourlyExpandedSheetProps {
-  wx: any;
+  wx: WeatherScenario | null;
   unit: 'C' | 'F';
   visible: boolean;
   onClose: () => void;
@@ -84,21 +81,6 @@ function catmullRomPath(
   }
 
   return d;
-}
-
-// ---------------------------------------------------------------------------
-// Determine "now" hour index from scenario time
-// ---------------------------------------------------------------------------
-
-function parseNowHour(timeStr: string): number {
-  // timeStr like "2:30 PM" or "10:40 PM"
-  const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!match) return 14;
-  let h = parseInt(match[1], 10);
-  const ampm = match[3].toUpperCase();
-  if (ampm === 'PM' && h !== 12) h += 12;
-  if (ampm === 'AM' && h === 12) h = 0;
-  return h;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,20 +141,18 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
     }),
   ).current;
 
-  // Generate chart data
-  const scenario = wx as WeatherScenario | null;
-  const dayResult = useMemo(() => (scenario ? wxDaySeries(scenario) : null), [scenario]);
-  const series = dayResult?.series ?? [];
-  const nowHour = dayResult?.nowHour ?? 14;
+  // Real 24h chart data straight from the scenario
+  const scenario = wx;
+  const series = scenario?.daySeries ?? [];
+  const nowHour = scenario?.nowHour ?? 14;
 
-  // Apply feels-like offset
-  const feelsOffset = scenario ? scenario.feels - scenario.temp : 0;
+  // Feels-like mode uses the real per-hour apparent temperature
   const displaySeries = useMemo(() => {
     if (mode === 'feels') {
-      return series.map((e) => ({ ...e, temp: e.temp + feelsOffset }));
+      return series.map((e) => ({ ...e, temp: e.feels }));
     }
     return series;
-  }, [series, mode, feelsOffset]);
+  }, [series, mode]);
 
   // Chart computations
   const temps = displaySeries.map((e) => e.temp);
@@ -257,6 +237,7 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
           styles.sheet,
           { transform: [{ translateY: slideAnim }] },
         ]}
+        accessibilityViewIsModal
       >
         {/* Drag handle */}
         <View {...panResponder.panHandlers} style={styles.handleArea}>
@@ -282,6 +263,8 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
               onPress={onClose}
               style={styles.closeBtn}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close hourly forecast"
             >
               <Text style={styles.closeBtnText}>{'\u2715'}</Text>
             </TouchableOpacity>
@@ -452,6 +435,9 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
               style={[styles.segmentBtn, mode === 'actual' && styles.segmentBtnActive]}
               onPress={() => setMode('actual')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Show actual temperatures"
+              accessibilityState={{ selected: mode === 'actual' }}
             >
               <Text style={[styles.segmentText, mode === 'actual' && styles.segmentTextActive]}>
                 Actual
@@ -461,6 +447,9 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
               style={[styles.segmentBtn, mode === 'feels' && styles.segmentBtnActive]}
               onPress={() => setMode('feels')}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Show feels-like temperatures"
+              accessibilityState={{ selected: mode === 'feels' }}
             >
               <Text style={[styles.segmentText, mode === 'feels' && styles.segmentTextActive]}>
                 Feels Like

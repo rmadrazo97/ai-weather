@@ -10,10 +10,11 @@ import {
   Animated,
 } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WeatherIcon from './WeatherIcon';
 import { fmtTemp } from '../utils/helpers';
 import { INK, MUTED, FAINT, HAIR, RAIN_BLUE } from '../utils/colors';
-import { WeatherScenario, wxDaySeries } from '../data/weatherData';
+import type { WeatherScenario } from '../data/weatherData';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -81,6 +82,8 @@ function CitiesButton({ onPress }: { onPress: () => void }) {
       style={styles.iconBtn}
       onPress={onPress}
       activeOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel="Open city list"
     >
       <Svg width={20} height={20} viewBox="0 0 20 20">
         <Circle cx={4} cy={5} r={1.5} fill={INK} />
@@ -108,6 +111,9 @@ function UnitToggle({
         style={[styles.unitBtn, unit === 'C' && styles.unitBtnActive]}
         onPress={() => onChange('C')}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Show temperatures in Celsius"
+        accessibilityState={{ selected: unit === 'C' }}
       >
         <Text
           style={[
@@ -122,6 +128,9 @@ function UnitToggle({
         style={[styles.unitBtn, unit === 'F' && styles.unitBtnActive]}
         onPress={() => onChange('F')}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Show temperatures in Fahrenheit"
+        accessibilityState={{ selected: unit === 'F' }}
       >
         <Text
           style={[
@@ -193,7 +202,12 @@ function ChevronDown({ onPress }: { onPress: () => void }) {
   }, [anim]);
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.6}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel="Show weather details"
+    >
       <Animated.View style={{ transform: [{ translateY: anim }] }}>
         <Svg width={28} height={28} viewBox="0 0 24 24">
           <Path
@@ -223,10 +237,12 @@ function HourlyGraph({
   unit: 'C' | 'F';
   onExpand: () => void;
 }) {
-  const { series: fullSeries, nowHour } = wxDaySeries(wx);
+  const fullSeries = wx.daySeries;
+  const nowHour = wx.nowHour;
   // Forward-looking window: from "now" through 18 hours ahead
   const ordered = [];
-  for (let k = 0; k < HOURLY_COUNT; k++) ordered.push(fullSeries[(nowHour + k) % 24]);
+  for (let k = 0; k < HOURLY_COUNT; k++)
+    ordered.push(fullSeries[(nowHour + k) % fullSeries.length]);
   const series = ordered.map((d, k) => ({ ...d, h: k === 0 ? 'Now' : d.label }));
   const temps = series.map((e) => fmtTemp(e.temp, unit));
   const minT = Math.min(...temps);
@@ -251,6 +267,8 @@ function HourlyGraph({
           style={styles.expandBtn}
           onPress={onExpand}
           activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Expand hourly forecast"
         >
           <ExpandIcon />
         </TouchableOpacity>
@@ -332,13 +350,14 @@ export default function HeroScreen({
   onExpandHourly,
   onAskAI,
 }: HeroScreenProps) {
+  const insets = useSafeAreaInsets();
   const temp = fmtTemp(wx.temp, unit);
   const hi = fmtTemp(wx.hi, unit);
   const lo = fmtTemp(wx.lo, unit);
   const feels = fmtTemp(wx.feels, unit);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       {/* ---- Top bar ---- */}
       <View style={styles.topBar}>
         <CitiesButton onPress={onOpenCities} />
@@ -429,7 +448,6 @@ const styles = StyleSheet.create({
     width: SCREEN_W,
     height: SCREEN_H,
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 56 : 40,
     paddingBottom: Platform.OS === 'ios' ? 34 : 24,
   },
 
@@ -608,9 +626,9 @@ const styles = StyleSheet.create({
     color: FAINT,
   },
   expandBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.55)',
     alignItems: 'center',
     justifyContent: 'center',

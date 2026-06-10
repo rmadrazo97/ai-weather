@@ -10,12 +10,18 @@ import {
   PanResponder,
   Dimensions,
   Modal,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
-import Svg, { Path, Rect, Line } from 'react-native-svg';
+import Svg, { Path, Rect, Line, Circle } from 'react-native-svg';
 import WeatherIcon from './WeatherIcon';
-import { SCENARIOS } from '../data/weatherData';
-import type { Condition, WeatherScenario } from '../data/weatherData';
+import type { City } from '../data/weatherData';
+import { PRESET_CITIES } from '../data/weatherData';
+import { searchCities } from '../data/weatherApi';
+import type { CityCurrent } from '../data/weatherApi';
+import type { MyLocationState } from '../hooks/useMyLocation';
 import { fmtTemp } from '../utils/helpers';
+import { INK, MUTED, FAINT, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,12 +30,9 @@ import { fmtTemp } from '../utils/helpers';
 const { height: SCREEN_H } = Dimensions.get('window');
 const COLLAPSED_H = SCREEN_H * 0.6;
 const EXPANDED_H = SCREEN_H * 0.94;
-const INK = '#15131a';
-const MUTED = 'rgba(21,19,26,0.55)';
-const HAIR = 'rgba(21,19,26,0.13)';
 
 // ---------------------------------------------------------------------------
-// ListIcon
+// Icons
 // ---------------------------------------------------------------------------
 
 const ListIcon: React.FC<{ size?: number; color?: string }> = ({ size = 20, color = INK }) => (
@@ -43,58 +46,34 @@ const ListIcon: React.FC<{ size?: number; color?: string }> = ({ size = 20, colo
   </Svg>
 );
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+const PinIcon: React.FC<{ size?: number; color?: string }> = ({ size = 22, color = INK }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Circle cx={12} cy={9} r={2.5} stroke={color} strokeWidth={1.8} />
+  </Svg>
+);
 
-interface CityEntry {
-  name: string;
-  cond: string;
-  custom?: boolean;
-}
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 interface CitySheetProps {
   visible: boolean;
-  activeCity: { name: string; cond: string };
-  customCities: CityEntry[];
+  activeCityId: string;
+  customCities: City[];
+  cityWx: Record<string, CityCurrent | undefined>;
   unit: 'C' | 'F';
-  onSelect: (city: CityEntry) => void;
-  onAdd: (name: string) => void;
-  onRemove: (name: string) => void;
+  myLocation: MyLocationState;
+  onSelect: (city: City) => void;
+  onAdd: (city: City) => void;
+  onRemove: (id: string) => void;
   onClose: () => void;
-}
-
-// ---------------------------------------------------------------------------
-// Preset cities
-// ---------------------------------------------------------------------------
-
-const PRESET_CITIES: CityEntry[] = [
-  { name: 'Madrid', cond: 'clear' },
-  { name: 'Berlin', cond: 'cloud' },
-  { name: 'London', cond: 'rain' },
-  { name: 'Lisbon', cond: 'night' },
-];
-
-// ---------------------------------------------------------------------------
-// Helper: get scenario temp for a condition
-// ---------------------------------------------------------------------------
-
-function getCityTemp(cond: string, unit: 'C' | 'F'): number {
-  const scenario = SCENARIOS[cond as Condition];
-  if (!scenario) return 0;
-  return fmtTemp(scenario.temp, unit);
-}
-
-function getCityHumidity(cond: string): number {
-  const scenario = SCENARIOS[cond as Condition];
-  if (!scenario) return 0;
-  return scenario.humidity;
-}
-
-function getCityLabel(cond: string): string {
-  const scenario = SCENARIOS[cond as Condition];
-  if (!scenario) return '';
-  return scenario.label;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,9 +82,11 @@ function getCityLabel(cond: string): string {
 
 const CitySheet: React.FC<CitySheetProps> = ({
   visible,
-  activeCity,
+  activeCityId,
   customCities,
+  cityWx,
   unit,
+  myLocation,
   onSelect,
   onAdd,
   onRemove,
@@ -116,7 +97,10 @@ const CitySheet: React.FC<CitySheetProps> = ({
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const currentHeight = useRef(COLLAPSED_H);
 
-  const [addInput, setAddInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<City[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Track sheetHeight
   useEffect(() => {
@@ -134,7 +118,9 @@ const CitySheet: React.FC<CitySheetProps> = ({
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
-          useNativeDriver: true,
+          // JS driver: this view also animates `height`, which the native
+          // animated module can't drive — mixing drivers on one style throws.
+          useNativeDriver: false,
           tension: 65,
           friction: 11,
         }),
@@ -149,7 +135,7 @@ const CitySheet: React.FC<CitySheetProps> = ({
         Animated.timing(slideAnim, {
           toValue: SCREEN_H,
           duration: 280,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 0,
@@ -193,22 +179,175 @@ const CitySheet: React.FC<CitySheetProps> = ({
     }),
   ).current;
 
-  const handleAdd = () => {
-    const name = addInput.trim();
-    if (!name) return;
-    onAdd(name);
-    setAddInput('');
+  // Search-as-you-type: ≥2 chars, 300ms debounce, abort stale requests
+  useEffect(() => {
+    abortRef.current?.abort();
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      try {
+        const found = await searchCities(q, ctrl.signal);
+        if (!ctrl.signal.aborted) {
+          setResults(found);
+          setSearching(false);
+        }
+      } catch {
+        if (!ctrl.signal.aborted) {
+          setResults([]);
+          setSearching(false);
+        }
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const addAndSelect = (city: City) => {
+    setQuery('');
+    setResults(null);
+    onAdd(city);
+  };
+
+  const handleSubmit = async () => {
+    const q = query.trim();
+    if (!q) return;
+    if (results && results.length > 0) {
+      addAndSelect(results[0]);
+      return;
+    }
+    // No debounced result yet — search immediately and take the top match.
+    try {
+      setSearching(true);
+      const found = await searchCities(q);
+      setSearching(false);
+      if (found.length > 0) addAndSelect(found[0]);
+      else setResults([]);
+    } catch {
+      setSearching(false);
+      setResults([]);
+    }
   };
 
   // Reset input on close
   useEffect(() => {
     if (!visible) {
-      const timer = setTimeout(() => setAddInput(''), 300);
+      const timer = setTimeout(() => {
+        setQuery('');
+        setResults(null);
+        setSearching(false);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [visible]);
 
-  const allCities = [...PRESET_CITIES, ...customCities];
+  const allCities: City[] = [...PRESET_CITIES, ...customCities];
+  const isSearchMode = query.trim().length >= 2;
+
+  // ---- My Location row content ----
+  const locCity = myLocation.city;
+  const locWx = locCity ? cityWx[locCity.id] : undefined;
+  let locName = 'My Location';
+  let locSub = 'Tap to enable location';
+  if (myLocation.status === 'loading') {
+    locSub = 'Locating…';
+  } else if (myLocation.status === 'denied') {
+    locSub = 'Permission denied — open Settings';
+  } else if (locCity) {
+    locName = locCity.name;
+    locSub = locWx
+      ? `${locWx.label} · Humidity ${locWx.humidity}%`
+      : 'Current location';
+  }
+
+  const handleMyLocationPress = async () => {
+    if (myLocation.status === 'denied') {
+      Linking.openSettings().catch(() => {});
+      return;
+    }
+    if (locCity && myLocation.status === 'ready') {
+      onSelect(locCity);
+      return;
+    }
+    const located = await myLocation.request();
+    if (located) onSelect(located);
+  };
+
+  const renderCityRow = (city: City) => {
+    const isActive = city.id === activeCityId;
+    const cur = cityWx[city.id];
+    const a11yLabel = cur
+      ? `${city.name}, ${fmtTemp(cur.temp, unit)} degrees, ${cur.label.toLowerCase()}`
+      : city.name;
+    return (
+      <TouchableOpacity
+        key={city.id}
+        style={[styles.cityRow, isActive && styles.cityRowActive]}
+        onPress={() => onSelect(city)}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityState={{ selected: isActive }}
+      >
+        <View style={styles.cityLeft}>
+          <WeatherIcon cond={cur?.cond ?? 'cloud'} size={34} stroke={cur ? INK : FAINT} />
+          <View style={styles.cityInfo}>
+            <Text style={styles.cityName}>{city.name}</Text>
+            <Text style={styles.citySub}>
+              {cur
+                ? `${cur.label} · Humidity ${cur.humidity}%`
+                : [city.admin1, city.country].filter(Boolean).join(' · ') || '—'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.cityRight}>
+          <Text style={styles.cityTemp}>
+            {cur ? `${fmtTemp(cur.temp, unit)}°` : '—'}
+          </Text>
+          {city.custom && (
+            <TouchableOpacity
+              style={styles.removeBtn}
+              onPress={() => onRemove(city.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${city.name} from cities`}
+            >
+              <Text style={styles.removeBtnText}>{'✕'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderResultRow = (city: City) => (
+    <TouchableOpacity
+      key={`${city.id}-${city.name}`}
+      style={styles.cityRow}
+      onPress={() => addAndSelect(city)}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`Add ${city.name}${city.country ? `, ${city.country}` : ''}`}
+    >
+      <View style={styles.cityLeft}>
+        <View style={styles.resultPin}>
+          <PinIcon size={20} color={MUTED} />
+        </View>
+        <View style={styles.cityInfo}>
+          <Text style={styles.cityName}>{city.name}</Text>
+          <Text style={styles.citySub}>
+            {[city.admin1, city.country].filter(Boolean).join(' · ') || '—'}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.resultAdd}>+</Text>
+    </TouchableOpacity>
+  );
 
   if (!visible) return null;
 
@@ -228,6 +367,7 @@ const CitySheet: React.FC<CitySheetProps> = ({
             transform: [{ translateY: slideAnim }],
           },
         ]}
+        accessibilityViewIsModal
       >
         {/* Drag handle */}
         <View {...panResponder.panHandlers} style={styles.handleArea}>
@@ -240,70 +380,106 @@ const CitySheet: React.FC<CitySheetProps> = ({
             <ListIcon size={22} color={INK} />
             <Text style={styles.headerTitle}>Cities</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={styles.closeBtnText}>{'\u2715'}</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.closeBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close city list"
+          >
+            <Text style={styles.closeBtnText}>{'✕'}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.divider} />
 
-        {/* City list */}
+        {/* City list / search results */}
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
         >
-          {allCities.map((city) => {
-            const isActive = city.name === activeCity.name;
-            return (
+          {isSearchMode ? (
+            <>
+              {searching && (
+                <View style={styles.statusRow}>
+                  <ActivityIndicator size="small" color={MUTED} />
+                  <Text style={styles.statusText}>Searching…</Text>
+                </View>
+              )}
+              {!searching && results && results.length === 0 && (
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusText}>No matches</Text>
+                </View>
+              )}
+              {results?.map(renderResultRow)}
+            </>
+          ) : (
+            <>
+              {/* Pinned: My Location */}
               <TouchableOpacity
-                key={city.name}
-                style={[styles.cityRow, isActive && styles.cityRowActive]}
-                onPress={() => onSelect(city)}
+                style={[
+                  styles.cityRow,
+                  locCity && locCity.id === activeCityId && styles.cityRowActive,
+                ]}
+                onPress={handleMyLocationPress}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  locCity && locWx
+                    ? `My location, ${locName}, ${fmtTemp(locWx.temp, unit)} degrees, ${locWx.label.toLowerCase()}`
+                    : `My location. ${locSub}`
+                }
               >
                 <View style={styles.cityLeft}>
-                  <WeatherIcon cond={city.cond as Condition} size={34} stroke={INK} />
+                  {locWx ? (
+                    <WeatherIcon cond={locWx.cond} size={34} stroke={INK} />
+                  ) : (
+                    <View style={styles.locIconWrap}>
+                      <PinIcon size={24} color={INK} />
+                    </View>
+                  )}
                   <View style={styles.cityInfo}>
-                    <Text style={styles.cityName}>{city.name}</Text>
-                    <Text style={styles.citySub}>
-                      {getCityLabel(city.cond)} · Humidity {getCityHumidity(city.cond)}%
-                    </Text>
+                    <Text style={styles.cityName}>{locName}</Text>
+                    <Text style={styles.citySub}>{locSub}</Text>
                   </View>
                 </View>
                 <View style={styles.cityRight}>
-                  <Text style={styles.cityTemp}>{getCityTemp(city.cond, unit)}°</Text>
-                  {city.custom && (
-                    <TouchableOpacity
-                      style={styles.removeBtn}
-                      onPress={() => onRemove(city.name)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.removeBtnText}>{'\u2715'}</Text>
-                    </TouchableOpacity>
+                  {myLocation.status === 'loading' ? (
+                    <ActivityIndicator size="small" color={MUTED} />
+                  ) : (
+                    <Text style={styles.cityTemp}>
+                      {locWx ? `${fmtTemp(locWx.temp, unit)}°` : '—'}
+                    </Text>
                   )}
                 </View>
               </TouchableOpacity>
-            );
-          })}
+
+              {allCities.map(renderCityRow)}
+            </>
+          )}
         </ScrollView>
 
-        {/* Add city input */}
+        {/* Search / add input */}
         <View style={styles.addBar}>
           <TextInput
             style={styles.addInput}
-            placeholder="Add a city..."
+            placeholder="Search for a city..."
             placeholderTextColor={MUTED}
-            value={addInput}
-            onChangeText={setAddInput}
-            onSubmitEditing={handleAdd}
-            returnKeyType="done"
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={handleSubmit}
+            returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel="Search for a city"
           />
           <TouchableOpacity
-            style={[styles.addBtn, !addInput.trim() && styles.addBtnDisabled]}
-            onPress={handleAdd}
-            disabled={!addInput.trim()}
+            style={[styles.addBtn, !query.trim() && styles.addBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={!query.trim()}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add top search result"
           >
             <Text style={styles.addBtnText}>+</Text>
           </TouchableOpacity>
@@ -409,6 +585,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 16,
     marginBottom: 4,
+    minHeight: 44,
   },
 
   cityRowActive: {
@@ -466,6 +643,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  locIconWrap: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  resultPin: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  resultAdd: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: MUTED,
+    paddingHorizontal: 4,
+  },
+
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 18,
+  },
+
+  statusText: {
+    fontSize: 14,
+    color: MUTED,
+    fontWeight: '500',
+  },
+
   addBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -489,9 +701,9 @@ const styles = StyleSheet.create({
   },
 
   addBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: INK,
     alignItems: 'center',
     justifyContent: 'center',

@@ -14,7 +14,9 @@ import {
   Modal,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import type { WeatherScenario } from '../data/weatherData';
+import type { WeatherScenario, City } from '../data/weatherData';
+import { useWeatherChat } from '../hooks/useWeatherChat';
+import { INK, MUTED, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -23,9 +25,6 @@ import type { WeatherScenario } from '../data/weatherData';
 const { height: SCREEN_H } = Dimensions.get('window');
 const COLLAPSED_H = SCREEN_H * 0.6;
 const EXPANDED_H = SCREEN_H * 0.94;
-const INK = '#15131a';
-const MUTED = 'rgba(21,19,26,0.55)';
-const HAIR = 'rgba(21,19,26,0.13)';
 
 // ---------------------------------------------------------------------------
 // SparkIcon
@@ -54,17 +53,13 @@ const SparkIcon: React.FC<SparkIconProps> = ({ size = 20, color = INK }) => (
 // Types
 // ---------------------------------------------------------------------------
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-}
-
 interface ChatSheetProps {
-  wx: any;
+  wx: WeatherScenario;
   unit: 'C' | 'F';
   visible: boolean;
   onClose: () => void;
+  /** Active city (for chat context coords); falls back to wx.location if absent. */
+  city?: Pick<City, 'name' | 'lat' | 'lon'> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,73 +72,6 @@ const SUGGESTIONS = [
   'Best time to go outside?',
   'Will it rain later?',
 ];
-
-// ---------------------------------------------------------------------------
-// Mock AI response generator
-// ---------------------------------------------------------------------------
-
-function generateResponse(question: string, wx: WeatherScenario, unit: 'C' | 'F'): string {
-  const q = question.toLowerCase();
-  const tempDisplay = unit === 'F' ? `${Math.round(wx.temp * 9 / 5 + 32)}\u00b0F` : `${wx.temp}\u00b0C`;
-  const feelsDisplay = unit === 'F' ? `${Math.round(wx.feels * 9 / 5 + 32)}\u00b0F` : `${wx.feels}\u00b0C`;
-
-  if (q.includes('umbrella')) {
-    if (wx.cond === 'rain' || wx.precip >= 50) {
-      return `Yes, I'd definitely bring an umbrella. There's a ${wx.precip}% chance of precipitation right now in ${wx.location}, with about ${wx.precipMm}mm expected. Better safe than sorry!`;
-    }
-    if (wx.precip >= 20) {
-      return `There's a ${wx.precip}% chance of rain in ${wx.location}, so it might be worth keeping one handy just in case. The skies look mostly ${wx.label.toLowerCase()} though.`;
-    }
-    return `No umbrella needed! It's ${wx.label.toLowerCase()} in ${wx.location} right now with only a ${wx.precip}% chance of rain. You should be fine without one.`;
-  }
-
-  if (q.includes('wear') || q.includes('clothes') || q.includes('dress')) {
-    if (wx.temp >= 25) {
-      return `It's warm at ${tempDisplay} in ${wx.location} (feels like ${feelsDisplay}). Light, breathable clothes are the way to go \u2014 shorts and a t-shirt would be perfect. Don't forget sunscreen with a UV index of ${wx.uv} (${wx.uvWord}).`;
-    }
-    if (wx.temp >= 15) {
-      return `At ${tempDisplay} in ${wx.location} (feels like ${feelsDisplay}), a light jacket or long sleeves would be comfortable. ${wx.wind > 10 ? 'It\'s a bit breezy, so a windbreaker wouldn\'t hurt.' : 'The wind is gentle, so layers are optional.'}`;
-    }
-    return `It's cool at ${tempDisplay} in ${wx.location} (feels like ${feelsDisplay}). I'd suggest a warm jacket or sweater. ${wx.cond === 'rain' ? 'And a waterproof layer since it\'s rainy.' : ''}`;
-  }
-
-  if (q.includes('outside') || q.includes('go out') || q.includes('best time')) {
-    const bestHour = wx.hourly.reduce(
-      (best: { temp: number; h: string; pop: number }, h: { temp: number; h: string; pop: number }) =>
-        h.pop < best.pop || (h.pop === best.pop && Math.abs(h.temp - 22) < Math.abs(best.temp - 22))
-          ? h
-          : best,
-      wx.hourly[0],
-    );
-    return `Based on the forecast for ${wx.location}, around ${bestHour.h} looks like the best window \u2014 ${unit === 'F' ? Math.round(bestHour.temp * 9 / 5 + 32) : bestHour.temp}\u00b0 with a ${bestHour.pop}% chance of rain. ${wx.summary}`;
-  }
-
-  if (q.includes('rain') || q.includes('precipitation') || q.includes('shower')) {
-    if (wx.cond === 'rain') {
-      return `Yes, it's currently raining in ${wx.location}. ${wx.precipNote} The precipitation chance is around ${wx.precip}% with winds at ${wx.wind} km/h from ${wx.dir}.`;
-    }
-    const rainyHour = wx.hourly.find((h: { pop: number }) => h.pop >= 40);
-    if (rainyHour) {
-      return `While it's ${wx.label.toLowerCase()} now, there's rain possible around ${rainyHour.h} with a ${rainyHour.pop}% chance. ${wx.precipNote}`;
-    }
-    return `No significant rain is expected in ${wx.location} right now. ${wx.precipNote} The current precipitation chance is only ${wx.precip}%.`;
-  }
-
-  if (q.includes('temperature') || q.includes('temp') || q.includes('hot') || q.includes('cold')) {
-    return `It's currently ${tempDisplay} in ${wx.location}, feeling like ${feelsDisplay}. Today's high is ${unit === 'F' ? Math.round(wx.hi * 9 / 5 + 32) : wx.hi}\u00b0 and the low is ${unit === 'F' ? Math.round(wx.lo * 9 / 5 + 32) : wx.lo}\u00b0. Humidity is at ${wx.humidity}%.`;
-  }
-
-  if (q.includes('wind') || q.includes('breeze') || q.includes('gust')) {
-    return `Wind in ${wx.location} is currently ${wx.wind} km/h from ${wx.dir}, with gusts up to ${wx.gust} km/h. ${wx.wind > 15 ? 'It\'s fairly breezy out there.' : 'Pretty calm conditions overall.'}`;
-  }
-
-  if (q.includes('uv') || q.includes('sun') || q.includes('sunscreen') || q.includes('sunburn')) {
-    return `The UV index in ${wx.location} is ${wx.uv} (${wx.uvWord}). ${wx.uv >= 6 ? 'Sunscreen is strongly recommended, especially between 10 AM and 4 PM.' : wx.uv >= 3 ? 'Some sun protection is advisable if you\'ll be outside for a while.' : 'UV levels are low, so sun protection isn\'t a major concern right now.'}`;
-  }
-
-  // Default / generic response
-  return `Right now in ${wx.location} it's ${wx.label.toLowerCase()} and ${tempDisplay} (feels like ${feelsDisplay}). ${wx.summary} Humidity is at ${wx.humidity}% with winds of ${wx.wind} km/h. Is there anything specific about the weather you'd like to know?`;
-}
 
 // ---------------------------------------------------------------------------
 // TypingIndicator
@@ -190,16 +118,15 @@ const TypingIndicator: React.FC = () => {
 // ChatSheet component
 // ---------------------------------------------------------------------------
 
-const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => {
+const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city }) => {
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_H)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const currentHeight = useRef(COLLAPSED_H);
   const scrollRef = useRef<ScrollView>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages, isTyping, sendMessage: sendChat, reset } = useWeatherChat({ wx, unit, city });
   const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
 
   // Track sheetHeight for panresponder
   useEffect(() => {
@@ -217,7 +144,9 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
-          useNativeDriver: true,
+          // JS driver: this view also animates `height`, which the native
+          // animated module can't drive — mixing drivers on one style throws.
+          useNativeDriver: false,
           tension: 65,
           friction: 11,
         }),
@@ -232,7 +161,7 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
         Animated.timing(slideAnim, {
           toValue: SCREEN_H,
           duration: 280,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 0,
@@ -282,16 +211,9 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
   const sendMessage = useCallback(
     (text: string) => {
       if (!text.trim() || !wx) return;
-      const userMsg: ChatMessage = {
-        id: `u-${Date.now()}`,
-        role: 'user',
-        text: text.trim(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
       setInputText('');
-      setIsTyping(true);
 
-      // Expand sheet when sending first message
+      // Expand sheet when sending a message
       Animated.spring(sheetHeight, {
         toValue: EXPANDED_H,
         useNativeDriver: false,
@@ -299,19 +221,9 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
         friction: 11,
       }).start();
 
-      // Simulate AI delay
-      setTimeout(() => {
-        const response = generateResponse(text, wx, unit);
-        const assistantMsg: ChatMessage = {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          text: response,
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-        setIsTyping(false);
-      }, 800 + Math.random() * 700);
+      sendChat(text);
     },
-    [wx, unit, sheetHeight],
+    [wx, sendChat, sheetHeight],
   );
 
   // Auto-scroll when messages change
@@ -321,17 +233,17 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
     }
   }, [messages, isTyping]);
 
-  // Reset on close
+  // Reset on close: abort any in-flight stream and clear chat state once the
+  // slide-out animation has finished.
   useEffect(() => {
     if (!visible) {
       const timer = setTimeout(() => {
-        setMessages([]);
+        reset();
         setInputText('');
-        setIsTyping(false);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [visible]);
+  }, [visible, reset]);
 
   if (!visible) return null;
 
@@ -339,7 +251,13 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
     <Modal transparent visible={visible} animationType="none" statusBarTranslucent>
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss chat"
+        />
       </Animated.View>
 
       {/* Sheet */}
@@ -370,7 +288,13 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
               )}
             </View>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.closeBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close chat"
+          >
             <Text style={styles.closeBtnText}>{'\u2715'}</Text>
           </TouchableOpacity>
         </View>
@@ -399,6 +323,8 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
                       style={styles.chip}
                       onPress={() => sendMessage(s)}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ask: ${s}`}
                     >
                       <Text style={styles.chipText}>{s}</Text>
                     </TouchableOpacity>
@@ -447,12 +373,17 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose }) => 
               onSubmitEditing={() => sendMessage(inputText)}
               returnKeyType="send"
               multiline={false}
+              accessibilityLabel="Message input"
+              accessibilityHint="Type a question about the weather"
             />
             <TouchableOpacity
               style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
               onPress={() => sendMessage(inputText)}
               disabled={!inputText.trim()}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              accessibilityState={{ disabled: !inputText.trim() }}
             >
               <Text style={styles.sendBtnText}>{'\u2191'}</Text>
             </TouchableOpacity>

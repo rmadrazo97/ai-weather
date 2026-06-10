@@ -50,7 +50,13 @@ interface AskButtonProps {
 export default function AskButton({ onPress }: AskButtonProps) {
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <TouchableOpacity style={styles.button} onPress={onPress} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={onPress}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Ask WeatherAI about the weather"
+      >
         <SparkIcon size={17} color="#fff" />
         <Text style={styles.text}>Ask WeatherAI</Text>
       </TouchableOpacity>

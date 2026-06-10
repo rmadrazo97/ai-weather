@@ -1,7 +1,6 @@
 import React from 'react';
 import Svg, { Circle, Path, Line } from 'react-native-svg';
-
-type Condition = 'clear' | 'cloud' | 'rain' | 'night';
+import type { Condition } from '../data/weatherData';
 
 interface WeatherIconProps {
   cond: Condition;
@@ -84,6 +83,41 @@ const WeatherIcon: React.FC<WeatherIconProps> = ({
             <Line x1={34} y1={70} x2={30} y2={82} {...common} />
             <Line x1={50} y1={70} x2={46} y2={84} {...common} />
             <Line x1={66} y1={70} x2={62} y2={82} {...common} />
+          </>
+        );
+
+      case 'snow':
+        return (
+          <>
+            <Path
+              d="M30 58 a16 16 0 0 1 1 -31 a21 21 0 0 1 40 5 a13 13 0 0 1 -3 26 Z"
+              {...common}
+            />
+            <Circle cx={34} cy={72} r={2.2} fill={stroke} />
+            <Circle cx={50} cy={78} r={2.2} fill={stroke} />
+            <Circle cx={66} cy={72} r={2.2} fill={stroke} />
+            <Circle cx={42} cy={84} r={2.2} fill={stroke} />
+            <Circle cx={58} cy={86} r={2.2} fill={stroke} />
+          </>
+        );
+
+      case 'fog':
+        return (
+          <>
+            <Line x1={22} y1={40} x2={78} y2={40} {...common} />
+            <Line x1={28} y1={52} x2={72} y2={52} {...common} />
+            <Line x1={22} y1={64} x2={78} y2={64} {...common} />
+          </>
+        );
+
+      case 'storm':
+        return (
+          <>
+            <Path
+              d="M30 58 a16 16 0 0 1 1 -31 a21 21 0 0 1 40 5 a13 13 0 0 1 -3 26 Z"
+              {...common}
+            />
+            <Path d="M52 64 L42 78 L50 78 L46 90 L58 74 L50 74 L56 64 Z" {...common} />
           </>
         );
 

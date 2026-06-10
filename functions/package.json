@@ -1,0 +1,26 @@
+{
+  "name": "ai-weather-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloud Functions backend for AI Weather (LangGraph agent on Gemini)",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1",
+    "@langchain/google-genai": "^2.1",
+    "@langchain/langgraph": "^1.3",
+    "firebase-admin": "13.10.0",
+    "firebase-functions": "^7",
+    "zod": "^3.25"
+  },
+  "devDependencies": {
+    "typescript": "^5.9"
+  }
+}

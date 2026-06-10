@@ -1,40 +1,56 @@
 # AI Weather
 
-An ultra-minimal, AI-centered weather app built with React Native and Expo. Designed to be the next generation weather experience — clean, bold, and conversational.
+An ultra-minimal, AI-centered weather app built with React Native and Expo. Clean, bold, and conversational — every value on screen is live data, and the assistant is a real LLM agent.
 
 ## Features
 
-- **Bold typography** — Helvetica Neue heavy weights, conversational AI headlines with outlined emphasis words
-- **Pastel mesh gradients** — background shifts with weather conditions (peach for clear, blue for rain, lavender for clouds, periwinkle for night)
-- **Hourly forecast** — horizontally scrollable temperature curve with weather icons, expandable to a full-day chart with Actual/Feels Like toggle
-- **Detail sections** — sunlight arc with glowing orb, precipitation bars, 10-day forecast with range indicators, conditions grid
-- **Ask WeatherAI** — conversational AI chat sheet grounded in the current location and timeframe
-- **Multi-city support** — switch between preset cities (Madrid, Berlin, London, Lisbon) or add your own
-- **Scroll-reveal animations** — sections fade and rise into view as you scroll
-- **Unit toggle** — switch between Celsius and Fahrenheit
+- **Live weather everywhere** — Open-Meteo powers current conditions, 24h hourly curve (real per-hour temps and feels-like), 10-day forecast, UV, visibility, dew point, pressure, and air quality (US AQI)
+- **WeatherAI assistant** — a LangGraph.js agent on Firebase Cloud Functions (Gemini 2.5 Flash-Lite) that answers practical questions ("Do I need an umbrella?", "Should I wear a coat?") with streaming responses, grounded in the city you're viewing, with tools for other locations and air quality
+- **My Location** — coarse (city-level) GPS with reverse geocoding, pinned in the city sheet
+- **Real city search** — search-as-you-type geocoding with region/country disambiguation
+- **Live city list** — every city row shows current temperature, condition, and humidity from a single batched API call
+- **Data-driven headlines** — "Hot and hazy under the clouds." generated from actual condition, temp band, precip window, and wind
+- **Seven visual conditions** — clear, cloud, rain, snow, fog, storm, night, each with its own gradient palette and icon
+- **Offline resilience** — per-city cache with a stale-data banner and retry; local fallback answers when the agent is unreachable
+- **Unit toggle** — Celsius/Fahrenheit, propagated to the AI assistant
+
+## Architecture
+
+```
+Expo app (SDK 56, RN 0.85, TypeScript strict)
+  ├─ Open-Meteo (forecast + air-quality + geocoding; free, keyless)
+  └─ Firebase callable `weatherChat` (streaming SSE)
+       └─ LangGraph.js ReAct agent → Gemini 2.5 Flash-Lite
+            tools: get_weather · get_air_quality · geocode_city
+       └─ Anonymous Auth + per-UID daily rate limit (Firestore)
+```
 
 ## Project Structure
 
 ```
 ai-weather/
-├── App.tsx                          # Root — gradient background, state, sheet orchestration
-├── app.json                         # Expo config (icons, splash, permissions)
+├── App.tsx                          # Root — state, weather loading, cache, sheet orchestration
+├── app.json / eas.json              # Expo + EAS build/submit config (OTA updates enabled)
+├── firebase.json / .firebaserc      # Firebase IaC: functions, Firestore rules, hosting
+├── functions/                       # Cloud Functions (Node 22, TypeScript)
+│   └── src/
+│       ├── index.ts                 # Streaming onCall entry (auth, rate limit, validation)
+│       ├── agent.ts                 # LangGraph agent + system prompt
+│       ├── tools.ts                 # Weather/AQI/geocoding tools
+│       └── rateLimit.ts             # Per-UID daily counter
+├── public/privacy.html              # Privacy policy (Firebase Hosting)
 ├── src/
-│   ├── components/
-│   │   ├── HeroScreen.tsx           # Hero: headline, temp, stats, hourly graph
-│   │   ├── DetailsView.tsx          # Sunlight arc, precipitation, 10-day, conditions grid
-│   │   ├── ChatSheet.tsx            # WeatherAI chat bottom sheet
-│   │   ├── CitySheet.tsx            # City switcher bottom sheet
-│   │   ├── HourlyExpandedSheet.tsx  # Full-day 24h temperature chart
-│   │   ├── AskButton.tsx            # Floating "Ask WeatherAI" pill
-│   │   └── WeatherIcon.tsx          # SVG weather icons (sun, moon, cloud, rain)
+│   ├── components/                  # HeroScreen, DetailsView, ChatSheet, CitySheet,
+│   │                                #  HourlyExpandedSheet, StatusBanner, ErrorBoundary, …
 │   ├── data/
-│   │   └── weatherData.ts           # Weather scenarios, diurnal temp curves, city helpers
-│   ├── hooks/
-│   │   └── useStorage.ts            # AsyncStorage persistence hook
-│   └── utils/
-│       ├── colors.ts                # Gradient palettes and theme colors per condition
-│       └── helpers.ts               # Temperature conversion utilities
+│   │   ├── weatherApi.ts            # Open-Meteo fetch, WMO mapping, batch city weather
+│   │   ├── weatherData.ts           # Types, preset cities
+│   │   ├── summary.ts               # Data-driven headline/summary builders
+│   │   ├── weatherCache.ts          # Per-city AsyncStorage cache
+│   │   └── weatherContext.ts        # Compact weather summary for the agent
+│   ├── hooks/                       # useWeatherChat (streaming), useMyLocation, useStorage
+│   ├── lib/firebase.ts              # Firebase app/auth/functions client
+│   └── utils/                       # colors, helpers, localAnswers (offline fallback)
 └── assets/                          # App icons, splash assets
 ```
 
@@ -42,50 +58,35 @@ ai-weather/
 
 ```bash
 npm install
-npx expo start
+npx expo start          # press i for iOS simulator
 ```
 
-Scan the QR code with Expo Go, or press `i` for iOS simulator / `a` for Android emulator.
-
-## Stack
-
-- React Native + Expo SDK 56
-- TypeScript
-- react-native-svg for icons and charts
-- expo-linear-gradient for mesh gradient backgrounds
-- react-native-reanimated + gesture-handler
-- AsyncStorage for city persistence
-
-## Weather Conditions
-
-The app supports four weather scenarios, each with its own gradient palette and data:
-
-| Condition | Gradient     | Example City |
-|-----------|-------------|--------------|
-| Clear     | Peach       | Madrid       |
-| Cloud     | Lavender    | Berlin       |
-| Rain      | Blue        | London       |
-| Night     | Periwinkle  | Lisbon       |
-
-## Building for Stores
+The app points at the deployed Firebase backend via `.env` (`EXPO_PUBLIC_FIREBASE_*` — public client identifiers). To run the backend locally:
 
 ```bash
-# iOS
-npx expo run:ios --configuration Release
-
-# Android
-npx expo run:android --variant release
-
-# Or use EAS Build
-npx eas build --platform all
+cd functions && npm install && cd ..
+echo "GEMINI_API_KEY=<your key>" > functions/.env.local
+firebase emulators:start
+EXPO_PUBLIC_USE_EMULATOR=1 npx expo start
 ```
 
-## Contributing
+## Deploying the backend
 
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes
-4. Push and open a PR
+```bash
+firebase functions:secrets:set GEMINI_API_KEY   # once
+firebase deploy --only functions,firestore,hosting
+```
+
+## Building for stores
+
+```bash
+npx eas build --platform all --profile production
+npx eas submit -p ios                            # needs App Store Connect API key
+npx eas submit -p android                        # after the first manual AAB upload
+npx eas update --channel production              # OTA updates for JS-only fixes
+```
+
+Privacy policy: https://ai-weather-jm7.web.app/privacy.html
 
 ## License
 

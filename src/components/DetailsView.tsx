@@ -120,7 +120,7 @@ function daylightDuration(sunrise: string, sunset: string): string {
 // ---------------------------------------------------------------------------
 
 interface DetailsViewProps {
-  wx: any;
+  wx: WeatherScenario;
   unit: 'C' | 'F';
 }
 
@@ -129,7 +129,7 @@ interface DetailsViewProps {
 // ---------------------------------------------------------------------------
 
 const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit }) => {
-  const isNight = wx.cond === 'night';
+  const isNight = wx.isNight;
   const sunPct = wx.sunPct as number;
 
   // Sun arc geometry
@@ -432,6 +432,32 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit }) => {
             </Text>
           </View>
         </View>
+
+        <View style={styles.gridRow}>
+          {/* Air quality */}
+          <View style={styles.gridCell}>
+            <Text style={styles.cellLabel}>AIR QUALITY</Text>
+            <Text style={styles.cellValue}>{wx.aqi ?? '—'}</Text>
+            <Text style={styles.cellUnit}>US AQI</Text>
+            <Text style={styles.cellCaption}>
+              {wx.aqiWord ?? 'No air quality data available'}
+            </Text>
+          </View>
+
+          {/* Dew point */}
+          <View style={styles.gridCell}>
+            <Text style={styles.cellLabel}>DEW POINT</Text>
+            <Text style={styles.cellValue}>{fmtTemp(wx.dew, unit)}&deg;</Text>
+            <Text style={styles.cellUnit}>{unit === 'C' ? 'Celsius' : 'Fahrenheit'}</Text>
+            <Text style={styles.cellCaption}>
+              {wx.dew >= 18
+                ? 'Humid — air feels sticky'
+                : wx.dew >= 10
+                  ? 'Comfortable moisture levels'
+                  : 'Dry air'}
+            </Text>
+          </View>
+        </View>
       </Section>
 
       {/* ================================================================= */}
@@ -440,7 +466,7 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit }) => {
       <Section index={sIdx++}>
         <View style={styles.footer}>
           <Text style={styles.footerBrand}>{'\u2726'} AI Weather</Text>
-          <Text style={styles.footerUpdated}>Updated just now</Text>
+          <Text style={styles.footerUpdated}>Pull down to refresh</Text>
         </View>
       </Section>
     </View>

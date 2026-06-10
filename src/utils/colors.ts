@@ -22,6 +22,18 @@ export const GRADIENTS: Record<string, { colors: [string, string, ...string[]]; 
     colors: ['#d2d4f2', '#c4c4ea', '#eeecf8', '#bcbfe4', '#dddaf0'],
     locations: [0, 0.2, 0.45, 0.7, 1],
   },
+  snow: {
+    colors: ['#e3f0fa', '#d4e7f6', '#f7fbfe', '#c9e0f2', '#ecf4fb'],
+    locations: [0, 0.2, 0.45, 0.7, 1],
+  },
+  fog: {
+    colors: ['#e8e4dd', '#ddd8d0', '#f5f3ef', '#d2cdc4', '#ece9e3'],
+    locations: [0, 0.2, 0.45, 0.7, 1],
+  },
+  storm: {
+    colors: ['#c3cada', '#b2bccf', '#e3e7ef', '#a5b1c8', '#d3d9e5'],
+    locations: [0, 0.2, 0.45, 0.7, 1],
+  },
 };
 
 export const THEME_COLORS: Record<string, string> = {
@@ -29,4 +41,7 @@ export const THEME_COLORS: Record<string, string> = {
   cloud: '#f3f1f8',
   rain: '#eef5fc',
   night: '#eeecf8',
+  snow: '#f7fbfe',
+  fog: '#f5f3ef',
+  storm: '#e3e7ef',
 };

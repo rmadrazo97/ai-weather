@@ -1,0 +1,7 @@
+lib/
+node_modules/
+scripts/*.js
+scripts/*.js.map
+.env*
+*.local
+!.env.local.example
