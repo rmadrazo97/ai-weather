@@ -65,6 +65,34 @@ const WeatherIcon: React.FC<WeatherIconProps> = ({
           </>
         );
 
+      case 'partly': {
+        const cx = 60;
+        const cy = 36;
+        const rays = [225, 270, 315, 0].map((deg) => {
+          const rad = (deg * Math.PI) / 180;
+          return (
+            <Line
+              key={deg}
+              x1={cx + 17 * Math.cos(rad)}
+              y1={cy + 17 * Math.sin(rad)}
+              x2={cx + 24 * Math.cos(rad)}
+              y2={cy + 24 * Math.sin(rad)}
+              {...common}
+            />
+          );
+        });
+        return (
+          <>
+            <Path d={`M${cx - 11} ${cy + 4} a11 11 0 1 1 18 8`} {...common} />
+            {rays}
+            <Path
+              d="M26 78 a13 13 0 0 1 1 -25 a17 17 0 0 1 33 4 a11 11 0 0 1 -3 21 Z"
+              {...common}
+            />
+          </>
+        );
+      }
+
       case 'cloud':
         return (
           <Path

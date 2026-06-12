@@ -133,7 +133,7 @@ function wmoInfo(code: number, isDay: boolean): { cond: Condition; label: string
     cond = 'clear';
     label = isDay ? 'Sunny' : 'Clear';
   } else if (code === 2) {
-    cond = 'cloud';
+    cond = 'partly';
     label = 'Partly cloudy';
   } else if (code === 3) {
     cond = 'cloud';

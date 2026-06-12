@@ -4,6 +4,7 @@
 
 export type Condition =
   | 'clear'
+  | 'partly'
   | 'cloud'
   | 'rain'
   | 'snow'

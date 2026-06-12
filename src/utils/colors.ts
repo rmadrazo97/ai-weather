@@ -10,6 +10,10 @@ export const GRADIENTS: Record<string, { colors: [string, string, ...string[]]; 
     colors: ['#ffe6bf', '#ffd6a6', '#fef5ea', '#ffc790', '#fbecda'],
     locations: [0, 0.2, 0.45, 0.7, 1],
   },
+  partly: {
+    colors: ['#fae3c4', '#f0d7b8', '#f8f2e9', '#e3cfae', '#f3e8d8'],
+    locations: [0, 0.2, 0.45, 0.7, 1],
+  },
   cloud: {
     colors: ['#e4def0', '#d6d3e6', '#f3f1f8', '#c8cfe0', '#e9e7f1'],
     locations: [0, 0.2, 0.45, 0.7, 1],
@@ -38,6 +42,7 @@ export const GRADIENTS: Record<string, { colors: [string, string, ...string[]]; 
 
 export const THEME_COLORS: Record<string, string> = {
   clear: '#fef5ea',
+  partly: '#f8f2e9',
   cloud: '#f3f1f8',
   rain: '#eef5fc',
   night: '#eeecf8',

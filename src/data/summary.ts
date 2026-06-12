@@ -137,6 +137,21 @@ export function buildHeadline(input: SummaryInput): Headline {
     }
   }
 
+  if (cond === 'partly') {
+    switch (band) {
+      case 'hot':
+        return { pre: 'Hot with', em: 'sun', post: 'between the clouds.' };
+      case 'warm':
+        return { pre: 'Warm', em: 'sunshine', post: 'with passing clouds.' };
+      case 'mild':
+        return { pre: 'Mild with', em: 'sun', post: 'and a few clouds.' };
+      case 'cool':
+        return { pre: 'Cool with', em: 'bright', post: 'spells today.' };
+      case 'cold':
+        return { pre: 'Cold with', em: 'some sun', post: 'breaking through.' };
+    }
+  }
+
   switch (band) {
     case 'hot':
       return { pre: "It's", em: 'hot', post: 'and sunny out.' };
@@ -175,6 +190,8 @@ function conditionSentence(input: SummaryInput): string {
         : 'A calm night with mostly clear skies.';
     case 'cloud':
       return 'Soft, even light all day with clouds overhead.';
+    case 'partly':
+      return 'A mix of sun and clouds through the day.';
     case 'clear':
     default:
       if (isNight) return 'A calm night with mostly clear skies.';
