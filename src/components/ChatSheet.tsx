@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { WeatherScenario, City } from '../data/weatherData';
 import { useWeatherChat } from '../hooks/useWeatherChat';
 import { INK, MUTED, HAIR } from '../utils/colors';
@@ -119,6 +120,7 @@ const TypingIndicator: React.FC = () => {
 // ---------------------------------------------------------------------------
 
 const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city }) => {
+  const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_H)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -363,7 +365,7 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
           </ScrollView>
 
           {/* Composer */}
-          <View style={styles.composer}>
+          <View style={[styles.composer, { paddingBottom: Math.max(10, insets.bottom) }]}>
             <TextInput
               style={styles.input}
               placeholder="Ask about the weather..."
