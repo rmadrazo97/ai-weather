@@ -8,8 +8,8 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.aiweather.app",
-      "buildNumber": "1",
+      "bundleIdentifier": "com.myweatherai.app",
+      "buildNumber": "5",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "package": "com.aiweather.app",
+      "package": "com.myweatherai.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#fef5ea",
@@ -63,7 +63,10 @@
       "policy": "fingerprint"
     },
     "updates": {
-      "url": "https://u.expo.dev/b875e93d-f34b-4ebd-b76a-6be343e3bfe7"
+      "url": "https://u.expo.dev/b875e93d-f34b-4ebd-b76a-6be343e3bfe7",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }
