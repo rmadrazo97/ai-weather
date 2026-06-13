@@ -9,11 +9,11 @@ import {
   Animated,
   PanResponder,
   Dimensions,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Modal,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { WeatherScenario, City } from '../data/weatherData';
 import { useWeatherChat } from '../hooks/useWeatherChat';
@@ -49,6 +49,53 @@ const SparkIcon: React.FC<SparkIconProps> = ({ size = 20, color = INK }) => (
     />
   </Svg>
 );
+
+// ---------------------------------------------------------------------------
+// Header icons
+// ---------------------------------------------------------------------------
+
+const HistoryIcon: React.FC<{ size?: number; color?: string }> = ({
+  size = 18,
+  color = INK,
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2} />
+    <Path
+      d="M12 7v5l3.5 2"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
+const NewChatIcon: React.FC<{ size?: number; color?: string }> = ({
+  size = 18,
+  color = INK,
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 5v14M5 12h14"
+      stroke={color}
+      strokeWidth={2.2}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+// ---------------------------------------------------------------------------
+// Session time formatting
+// ---------------------------------------------------------------------------
+
+function fmtSessionTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,11 +171,27 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_H)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
   const currentHeight = useRef(COLLAPSED_H);
+  // Height to restore the sheet to once the keyboard dismisses.
+  const heightBeforeKeyboard = useRef<number | null>(null);
+  // Current keyboard lift (0 when hidden) so the expand-on-send can stay clamped.
+  const keyboardLift = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
 
-  const { messages, isTyping, sendMessage: sendChat, reset } = useWeatherChat({ wx, unit, city });
+  const {
+    messages,
+    isTyping,
+    sendMessage: sendChat,
+    stop,
+    sessions,
+    activeSessionId,
+    newChat,
+    openSession,
+    deleteSession,
+  } = useWeatherChat({ wx, unit, city });
   const [inputText, setInputText] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
 
   // Track sheetHeight for panresponder
   useEffect(() => {
@@ -174,6 +237,67 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
     }
   }, [visible, slideAnim, backdropOpacity, sheetHeight]);
 
+  // Keyboard avoidance. The sheet is absolutely positioned at bottom:0 with a
+  // fixed height, so the composer sits behind the keyboard. We lift the whole
+  // sheet by (keyboardHeight − safe-area inset) and, if needed, shrink it so
+  // the header never slides above the safe area at the top.
+  useEffect(() => {
+    if (!visible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: any) => {
+      const kbHeight = e?.endCoordinates?.height ?? 0;
+      const duration = e?.duration ?? 250;
+      const lift = Math.max(0, kbHeight - insets.bottom);
+      keyboardLift.current = lift;
+      // Largest height that keeps the lifted sheet's top at/below the safe area.
+      const maxHeight = SCREEN_H - lift - insets.top - 8;
+      if (heightBeforeKeyboard.current === null) {
+        heightBeforeKeyboard.current = currentHeight.current;
+      }
+      const targetHeight = Math.min(heightBeforeKeyboard.current, maxHeight);
+      Animated.parallel([
+        Animated.timing(keyboardOffset, {
+          toValue: -lift,
+          duration,
+          useNativeDriver: false,
+        }),
+        Animated.timing(sheetHeight, {
+          toValue: targetHeight,
+          duration,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    };
+
+    const onHide = (e: any) => {
+      const duration = e?.duration ?? 250;
+      const restore = heightBeforeKeyboard.current ?? COLLAPSED_H;
+      heightBeforeKeyboard.current = null;
+      keyboardLift.current = 0;
+      Animated.parallel([
+        Animated.timing(keyboardOffset, {
+          toValue: 0,
+          duration,
+          useNativeDriver: false,
+        }),
+        Animated.timing(sheetHeight, {
+          toValue: restore,
+          duration,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    };
+
+    const showSub = Keyboard.addListener(showEvt, onShow);
+    const hideSub = Keyboard.addListener(hideEvt, onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [visible, insets.bottom, insets.top, keyboardOffset, sheetHeight]);
+
   // PanResponder for drag
   const panResponder = useRef(
     PanResponder.create({
@@ -215,9 +339,14 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
       if (!text.trim() || !wx) return;
       setInputText('');
 
-      // Expand sheet when sending a message
+      // Expand sheet when sending. If the keyboard is up, cap the height so the
+      // header stays on screen, and remember to restore to expanded on dismiss.
+      const lift = keyboardLift.current;
+      const target =
+        lift > 0 ? Math.min(EXPANDED_H, SCREEN_H - lift - insets.top - 8) : EXPANDED_H;
+      if (lift > 0) heightBeforeKeyboard.current = EXPANDED_H;
       Animated.spring(sheetHeight, {
-        toValue: EXPANDED_H,
+        toValue: target,
         useNativeDriver: false,
         tension: 65,
         friction: 11,
@@ -225,27 +354,32 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
 
       sendChat(text);
     },
-    [wx, sendChat, sheetHeight],
+    [wx, sendChat, sheetHeight, insets.top],
   );
 
-  // Auto-scroll when messages change
+  // Auto-scroll when messages change or the sheet reopens onto a restored
+  // conversation (the ScrollView remounts at the top).
   useEffect(() => {
-    if (messages.length > 0 || isTyping) {
+    if (visible && (messages.length > 0 || isTyping)) {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  }, [messages, isTyping]);
+  }, [visible, messages, isTyping]);
 
-  // Reset on close: abort any in-flight stream and clear chat state once the
-  // slide-out animation has finished.
+  // On close: abort any in-flight stream. The conversation itself is kept
+  // (persisted per city) so reopening restores it.
   useEffect(() => {
     if (!visible) {
+      keyboardOffset.setValue(0);
+      keyboardLift.current = 0;
+      heightBeforeKeyboard.current = null;
       const timer = setTimeout(() => {
-        reset();
+        stop();
         setInputText('');
+        setShowHistory(false);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [visible, reset]);
+  }, [visible, stop, keyboardOffset]);
 
   if (!visible) return null;
 
@@ -268,7 +402,7 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
           styles.sheet,
           {
             height: sheetHeight,
-            transform: [{ translateY: slideAnim }],
+            transform: [{ translateY: Animated.add(slideAnim, keyboardOffset) }],
           },
         ]}
       >
@@ -290,25 +424,108 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
               )}
             </View>
           </View>
-          <TouchableOpacity
-            onPress={onClose}
-            style={styles.closeBtn}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Close chat"
-          >
-            <Text style={styles.closeBtnText}>{'\u2715'}</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            {messages.length > 0 && !showHistory && (
+              <TouchableOpacity
+                onPress={newChat}
+                style={styles.iconBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel="New conversation"
+              >
+                <NewChatIcon color={MUTED} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => setShowHistory((v) => !v)}
+              style={[styles.iconBtn, showHistory && styles.iconBtnActive]}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel={showHistory ? 'Back to conversation' : 'Past conversations'}
+              accessibilityState={{ selected: showHistory }}
+            >
+              <HistoryIcon color={showHistory ? INK : MUTED} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close chat"
+            >
+              <Text style={styles.closeBtnText}>{'\u2715'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.divider} />
 
-        {/* Messages */}
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={20}
-        >
+        {showHistory ? (
+          /* Past conversations (location scoped) */
+          <ScrollView style={styles.flex} contentContainerStyle={styles.historyContent}>
+            <Text style={styles.historyTitle}>
+              Past conversations{wx ? ` · ${wx.location}` : ''}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.historyNewRow}
+              onPress={() => {
+                newChat();
+                setShowHistory(false);
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Start a new conversation"
+            >
+              <NewChatIcon size={16} color={INK} />
+              <Text style={styles.historyNewText}>New conversation</Text>
+            </TouchableOpacity>
+
+            {sessions.length === 0 && (
+              <Text style={styles.historyEmpty}>
+                No past conversations here yet.
+              </Text>
+            )}
+
+            {sessions.map((s) => (
+              <View
+                key={s.id}
+                style={[
+                  styles.historyRow,
+                  s.id === activeSessionId && styles.historyRowActive,
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.historyRowMain}
+                  onPress={() => {
+                    openSession(s.id);
+                    setShowHistory(false);
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open conversation: ${s.title}`}
+                >
+                  <Text style={styles.historyRowTitle} numberOfLines={1}>
+                    {s.title}
+                  </Text>
+                  <Text style={styles.historyRowMeta}>
+                    {fmtSessionTime(s.updatedAt)} · {s.messages.length} messages
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => deleteSession(s.id)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete conversation: ${s.title}`}
+                >
+                  <Text style={styles.historyDeleteText}>{'✕'}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        ) : (
+        /* Messages */
+        <View style={styles.flex}>
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
@@ -390,7 +607,8 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
               <Text style={styles.sendBtnText}>{'\u2191'}</Text>
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
+        )}
       </Animated.View>
     </Modal>
   );
@@ -465,6 +683,99 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: MUTED,
     fontWeight: '500',
+  },
+
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  iconBtnActive: {
+    backgroundColor: HAIR,
+  },
+
+  historyContent: {
+    padding: 20,
+    paddingBottom: 32,
+  },
+
+  historyTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: MUTED,
+    letterSpacing: 0.4,
+    marginBottom: 14,
+  },
+
+  historyNewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: HAIR,
+    marginBottom: 16,
+  },
+
+  historyNewText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: INK,
+  },
+
+  historyEmpty: {
+    fontSize: 14,
+    color: MUTED,
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginBottom: 6,
+  },
+
+  historyRowActive: {
+    backgroundColor: '#f5f4f7',
+  },
+
+  historyRowMain: {
+    flex: 1,
+    gap: 3,
+  },
+
+  historyRowTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: INK,
+  },
+
+  historyRowMeta: {
+    fontSize: 12,
+    color: MUTED,
+    fontWeight: '500',
+  },
+
+  historyDeleteText: {
+    fontSize: 13,
+    color: MUTED,
+    fontWeight: '600',
   },
 
   closeBtn: {

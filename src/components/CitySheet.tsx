@@ -9,10 +9,13 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  Keyboard,
+  Platform,
   Modal,
   ActivityIndicator,
   Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Line, Circle } from 'react-native-svg';
 import WeatherIcon from './WeatherIcon';
 import type { City } from '../data/weatherData';
@@ -92,10 +95,14 @@ const CitySheet: React.FC<CitySheetProps> = ({
   onRemove,
   onClose,
 }) => {
+  const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_H)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
   const currentHeight = useRef(COLLAPSED_H);
+  // Height to restore the sheet to once the keyboard dismisses.
+  const heightBeforeKeyboard = useRef<number | null>(null);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<City[] | null>(null);
@@ -131,6 +138,8 @@ const CitySheet: React.FC<CitySheetProps> = ({
         }),
       ]).start();
     } else {
+      keyboardOffset.setValue(0);
+      heightBeforeKeyboard.current = null;
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: SCREEN_H,
@@ -144,7 +153,47 @@ const CitySheet: React.FC<CitySheetProps> = ({
         }),
       ]).start();
     }
-  }, [visible, slideAnim, backdropOpacity, sheetHeight]);
+  }, [visible, slideAnim, backdropOpacity, sheetHeight, keyboardOffset]);
+
+  // Keyboard avoidance: lift and (if needed) shrink the bottom-anchored sheet
+  // so the search bar rides above the keyboard while the header stays visible.
+  useEffect(() => {
+    if (!visible) return;
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: any) => {
+      const kbHeight = e?.endCoordinates?.height ?? 0;
+      const duration = e?.duration ?? 250;
+      const lift = Math.max(0, kbHeight - insets.bottom);
+      const maxHeight = SCREEN_H - lift - insets.top - 8;
+      if (heightBeforeKeyboard.current === null) {
+        heightBeforeKeyboard.current = currentHeight.current;
+      }
+      const targetHeight = Math.min(heightBeforeKeyboard.current, maxHeight);
+      Animated.parallel([
+        Animated.timing(keyboardOffset, { toValue: -lift, duration, useNativeDriver: false }),
+        Animated.timing(sheetHeight, { toValue: targetHeight, duration, useNativeDriver: false }),
+      ]).start();
+    };
+
+    const onHide = (e: any) => {
+      const duration = e?.duration ?? 250;
+      const restore = heightBeforeKeyboard.current ?? COLLAPSED_H;
+      heightBeforeKeyboard.current = null;
+      Animated.parallel([
+        Animated.timing(keyboardOffset, { toValue: 0, duration, useNativeDriver: false }),
+        Animated.timing(sheetHeight, { toValue: restore, duration, useNativeDriver: false }),
+      ]).start();
+    };
+
+    const showSub = Keyboard.addListener(showEvt, onShow);
+    const hideSub = Keyboard.addListener(hideEvt, onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [visible, insets.bottom, insets.top, keyboardOffset, sheetHeight]);
 
   // PanResponder
   const panResponder = useRef(
@@ -364,7 +413,7 @@ const CitySheet: React.FC<CitySheetProps> = ({
           styles.sheet,
           {
             height: sheetHeight,
-            transform: [{ translateY: slideAnim }],
+            transform: [{ translateY: Animated.add(slideAnim, keyboardOffset) }],
           },
         ]}
         accessibilityViewIsModal

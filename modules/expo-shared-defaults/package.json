@@ -1,0 +1,10 @@
+{
+  "name": "expo-shared-defaults",
+  "version": "1.0.0",
+  "description": "App Group UserDefaults bridge + WidgetKit reload for AI Weather widgets",
+  "main": "index.ts",
+  "author": "AI Weather",
+  "license": "MIT",
+  "homepage": "https://github.com/myweatherai/ai-weather",
+  "private": true
+}
