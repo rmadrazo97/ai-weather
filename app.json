@@ -10,6 +10,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.myweatherai.app",
       "buildNumber": "5",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.myweatherai.app"]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -38,6 +41,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@bacons/apple-targets",
       [
         "expo-location",
         {
