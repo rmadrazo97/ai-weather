@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MyWeather AI — Support</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    line-height: 1.6; color: #15131a; background: #fef5ea;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 56px 24px 80px; }
+  h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.5px; margin: 0 0 8px; }
+  .sub { color: rgba(21,19,26,0.55); font-size: 17px; margin: 0 0 40px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 36px 0 10px; }
+  p, li { font-size: 16px; color: rgba(21,19,26,0.82); }
+  a { color: #c2410c; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .card {
+    background: rgba(255,255,255,0.6); border: 1px solid rgba(21,19,26,0.08);
+    border-radius: 16px; padding: 20px 24px; margin-top: 16px;
+  }
+  details { margin: 10px 0; }
+  summary { font-weight: 600; cursor: pointer; font-size: 16px; }
+  details p { margin: 8px 0 0; }
+  footer { margin-top: 56px; font-size: 14px; color: rgba(21,19,26,0.45); }
+  @media (prefers-color-scheme: dark) {
+    body { color: #f4f1ec; background: #1a1722; }
+    h1 { color: #fff; }
+    .sub { color: rgba(255,255,255,0.55); }
+    p, li { color: rgba(255,255,255,0.8); }
+    .card { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
+    a { color: #fb923c; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>MyWeather AI — Support</h1>
+    <p class="sub">A minimal weather app with a built-in AI assistant.</p>
+
+    <div class="card">
+      <p style="margin:0">Need help or have feedback? Email us and we'll get back to you.</p>
+      <p style="margin:12px 0 0"><strong>Contact:</strong> <a href="mailto:jmadrazo7@gmail.com">jmadrazo7@gmail.com</a></p>
+    </div>
+
+    <h2>Frequently asked questions</h2>
+
+    <details open>
+      <summary>How do I add my city?</summary>
+      <p>Tap the list icon in the top-left, then use the search bar to find any city worldwide. Tap a result to add it. You can also tap “My Location” to use your current position (you'll be asked for location permission).</p>
+    </details>
+
+    <details>
+      <summary>What can the AI assistant do?</summary>
+      <p>Tap “Ask WeatherAI” and ask practical questions in plain language — “Do I need an umbrella today?”, “Should I wear a coat?”, “When's the best time for a run?”. It answers using the live forecast for the city you're viewing and can look up other locations and air quality.</p>
+    </details>
+
+    <details>
+      <summary>Where does the weather data come from?</summary>
+      <p>All weather, air-quality and location-search data comes from <a href="https://open-meteo.com" rel="noopener">Open-Meteo</a>. Forecasts are models and may differ slightly from other apps.</p>
+    </details>
+
+    <details>
+      <summary>Why does a forecast differ from another weather app?</summary>
+      <p>Different apps use different forecast providers and models, so temperatures and conditions can vary by a degree or two, especially several days out. Neither is “wrong” — they're independent predictions.</p>
+    </details>
+
+    <details>
+      <summary>How do I switch between °C and °F?</summary>
+      <p>Tap the °C / °F toggle in the top-right of the main screen. The choice is remembered and is also used by the AI assistant.</p>
+    </details>
+
+    <details>
+      <summary>Is my data private?</summary>
+      <p>We don't require an account. Approximate location is only used to fetch local weather and is never stored on our servers. See our <a href="/privacy.html">Privacy Policy</a> for details.</p>
+    </details>
+
+    <footer>
+      © 2026 MyWeather AI · <a href="/privacy.html">Privacy Policy</a>
+    </footer>
+  </div>
+</body>
+</html>
