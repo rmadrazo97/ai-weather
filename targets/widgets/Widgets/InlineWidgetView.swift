@@ -1,14 +1,16 @@
 // ---------------------------------------------------------------------------
 // InlineWidgetView.swift — accessoryInline lock-screen complication (PRD 05 US-001).
 //
-// COUNTERPART (data): src/widgets/snapshot.ts → WidgetSnapshot.swift; glyph
-// mapping mirrors DesignSystem/WeatherGlyph.swift (PRD 02 US-002).
+// COUNTERPART (data): src/widgets/snapshot.ts → WidgetSnapshot.swift. Glyph
+// mapping is a LOCAL SF-Symbol table (`sfSymbolName(for:)`), intentionally NOT
+// the custom-path `WeatherGlyph` used by every other family (PRD 02 US-002).
 //
 // HARD PLATFORM CONSTRAINT (PRD 05 US-001): `accessoryInline` renders ONLY a
 // single `Text` plus AT MOST ONE leading SF Symbol. A custom Path, HStack, or
-// any multi-view layout renders BLANK. So this view is exactly one `Label`
-// (Text + systemImage). No background — the system supplies the inline tint.
-// Custom `Path` glyphs do not survive here; SF Symbols only.
+// any multi-view layout renders BLANK. The shared `WeatherGlyph` is now a
+// custom `Shape`/`Path` redraw — which would render BLANK here — so this file
+// keeps its own SF-Symbol mapping and stays exactly one `Label` (Text +
+// systemImage). No background — the system supplies the inline tint.
 //
 // City is intentionally omitted (PRD 05 Open Questions, resolved): inline length
 // is tiny, so we show "<temp> <condition label>" only, e.g. "72° Partly cloudy".
@@ -56,7 +58,29 @@ struct InlineWidgetView: View {
     /// Neutral cloud for the no-data state so the slot never looks broken.
     private var symbolName: String {
         if hasNoData { return "cloud" }
-        return WeatherGlyph.symbolName(for: current.cond)
+        return Self.sfSymbolName(for: current.cond)
+    }
+
+    /// Local SF-Symbol mapping for the inline family.
+    ///
+    /// WHY LOCAL / WHY SF SYMBOLS: `accessoryInline` renders ONLY Text + one SF
+    /// Symbol — custom `Path` glyphs (the new `WeatherGlyph` redraws) show BLANK
+    /// here. So inline must stay on SF Symbols and cannot share the custom-path
+    /// `WeatherGlyph`. We keep this mapping inline-local (rather than reaching
+    /// into `WeatherGlyph`) so the inline complication owns the one rendering
+    /// path that is actually legal in this family. No `default` so a new
+    /// `Condition` fails the build instead of rendering an empty box.
+    private static func sfSymbolName(for cond: Condition) -> String {
+        switch cond {
+        case .clear:  return "sun.max"
+        case .partly: return "cloud.sun"
+        case .cloud:  return "cloud"
+        case .rain:   return "cloud.rain"
+        case .snow:   return "cloud.snow"
+        case .fog:    return "cloud.fog"
+        case .storm:  return "cloud.bolt.rain"
+        case .night:  return "moon"
+        }
     }
 
     /// VoiceOver: "<temp> degrees, <condition>" (US-001 acceptance). Spells

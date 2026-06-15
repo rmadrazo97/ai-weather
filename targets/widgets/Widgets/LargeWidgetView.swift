@@ -54,6 +54,18 @@ struct LargeWidgetView: View {
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 if entry.isStale { StaleBadge() }
+                // Interactive refresh (iOS 17+ only). Unobtrusive top-trailing
+                // glyph; on iOS 16 the control is simply absent and the header
+                // layout is unchanged. `Button(intent:)` is an iOS 17 API.
+                if #available(iOS 17.0, *) {
+                    Button(intent: RefreshIntent()) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Refresh weather")
+                }
             }
 
             // Now-block (label suppressed — the headline carries the prose).

@@ -143,12 +143,15 @@ struct LockWidgetEntryView: View {
 
 // MARK: - Bundle
 
-/// The widget bundle exposed under `com.myweatherai.app.widgets`. On iOS 17+
-/// the home-screen widget is the configurable (`AppIntentConfiguration`) variant
-/// so users get per-instance city selection (PRD 06b); on iOS 16.4 it is the
-/// StaticConfiguration active-city widget (PRD 04). The lock-screen widget is
-/// StaticConfiguration on all supported versions (06b targets system families
-/// only). See SelectCityIntent.swift for the gated 06b code.
+/// The widget bundle exposed under `com.myweatherai.app.widgets`. The
+/// StaticConfiguration active-city home widget (PRD 04) ships on ALL supported
+/// versions (16.4 floor). On iOS 17+ the configurable (`AppIntentConfiguration`)
+/// home widget (PRD 06b) is ALSO bundled, so both appear in the gallery there
+/// with distinct kinds — "AI Weather" (active city) and "AI Weather (Choose
+/// City)" (per-instance selection). iOS 16 sees only the static one (no
+/// configuration UI). The lock-screen widget is StaticConfiguration on all
+/// versions (06b targets system families only). See SelectCityIntent.swift for
+/// the gated 06b code.
 @main
 struct AIWeatherWidgetBundle: WidgetBundle {
     var body: some Widget {
@@ -156,12 +159,12 @@ struct AIWeatherWidgetBundle: WidgetBundle {
         AIWeatherHomeWidget()
         // PRD 05: lock-screen accessory families.
         AIWeatherLockWidget()
-        // PRD 06b (fast-follow, iOS 17+): per-instance city selection via
-        // `AIWeatherHomeConfigurableWidget` (see SelectCityIntent.swift). It stays
-        // compiled and gated but is intentionally NOT in the bundle yet:
-        // `WidgetBundleBuilder` has no `buildEither`, so an if/else here is illegal,
-        // and the configurable variant shares kind "AIWeatherHome" with the static
-        // one. To enable after the 06a spike: give it a distinct `kind` and add a
-        // single-branch `if #available(iOS 17.0, *) { AIWeatherHomeConfigurableWidget() }`.
+        // PRD 06b (iOS 17+): per-instance city selection via the configurable
+        // home widget (kind "AIWeatherHomeConfigurable", distinct from the static
+        // "AIWeatherHome"). Single-branch `#available` only — `WidgetBundleBuilder`
+        // has no `buildEither`, so an if/else here would be a compile error.
+        if #available(iOS 17.0, *) {
+            AIWeatherHomeConfigurableWidget()
+        }
     }
 }

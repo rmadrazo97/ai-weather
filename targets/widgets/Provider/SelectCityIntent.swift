@@ -172,7 +172,10 @@ struct ConfigurableWeatherProvider: AppIntentTimelineProvider {
 /// available (see AIWeatherWidget.swift).
 @available(iOS 17.0, *)
 struct AIWeatherHomeConfigurableWidget: Widget {
-    let kind: String = "AIWeatherHome"
+    // DISTINCT kind from the static `AIWeatherHomeWidget` ("AIWeatherHome"). Two
+    // widgets in one bundle MUST have different kinds; on iOS 17 BOTH appear in
+    // the gallery, so the configurationDisplayName below disambiguates them.
+    let kind: String = "AIWeatherHomeConfigurable"
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(
@@ -182,8 +185,8 @@ struct AIWeatherHomeConfigurableWidget: Widget {
         ) { entry in
             HomeWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("AI Weather")
-        .description("Current conditions, hourly, and a 5-day forecast. Long-press to pick a city.")
+        .configurationDisplayName("AI Weather (Choose City)")
+        .description("Pin a specific city to this widget. Long-press → Edit Widget to choose. Current conditions, hourly, and a 5-day forecast.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
