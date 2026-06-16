@@ -97,6 +97,10 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const [mode, setMode] = useState<'actual' | 'feels'>('actual');
+  // Scrubbed hour; null means "follow the current time"
+  const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  const chartLeftRef = useRef(0);
+  const chartWrapRef = useRef<View>(null);
 
   // Slide in/out
   useEffect(() => {
@@ -146,6 +150,21 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
   const series = scenario?.daySeries ?? [];
   const nowHour = scenario?.nowHour ?? 14;
 
+  // Scrub gesture over the chart: map touch x to an hour index
+  const scrubTo = (pageX: number) => {
+    const x = pageX - chartLeftRef.current - CHART_PAD_L;
+    const hour = Math.round((x / PLOT_W) * 23);
+    setSelectedHour(Math.max(0, Math.min(23, hour)));
+  };
+  const chartPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => scrubTo(evt.nativeEvent.pageX),
+      onPanResponderMove: (evt) => scrubTo(evt.nativeEvent.pageX),
+    }),
+  ).current;
+
   // Feels-like mode uses the real per-hour apparent temperature
   const displaySeries = useMemo(() => {
     if (mode === 'feels') {
@@ -171,10 +190,13 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
 
   // Split path at "now" for dashed past / solid future
   const nowX = CHART_PAD_L + (nowHour / 23) * PLOT_W;
-  const nowY =
-    CHART_PAD_T +
-    PLOT_H -
-    ((displaySeries[nowHour]?.temp ?? 0 - minT) / range) * PLOT_H;
+
+  // Active (focused) hour: scrubbed position, pre-focused on the current time
+  const activeHour = selectedHour ?? nowHour;
+  const activeEntry = displaySeries[activeHour];
+  const activeX = CHART_PAD_L + (activeHour / 23) * PLOT_W;
+  const activeY = points[activeHour]?.y ?? CHART_PAD_T + PLOT_H / 2;
+  const isAtNow = activeHour === nowHour;
 
   // Full curve
   const fullCurve = catmullRomPath(points);
@@ -214,10 +236,13 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
   // Hour icons (every 2 hours)
   const iconHours = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
 
-  // Reset mode on close
+  // Reset mode and scrub position on close
   useEffect(() => {
     if (!visible) {
-      const timer = setTimeout(() => setMode('actual'), 300);
+      const timer = setTimeout(() => {
+        setMode('actual');
+        setSelectedHour(null);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [visible]);
@@ -249,13 +274,23 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
           <View style={styles.headerContent}>
             <Text style={styles.sectionLabel}>HOURLY FORECAST</Text>
             <Text style={styles.locationName}>{scenario.location}</Text>
-            <Text style={styles.headerTime}>{scenario.time}</Text>
+            <Text style={styles.headerTime}>
+              {isAtNow ? scenario.time : activeEntry?.label ?? scenario.time}
+            </Text>
           </View>
           <View style={styles.headerRight}>
             <View style={styles.headerTemp}>
-              <WeatherIcon cond={scenario.cond} size={32} stroke={INK} />
+              <WeatherIcon
+                cond={(activeEntry?.cond as Condition) ?? scenario.cond}
+                size={32}
+                stroke={INK}
+              />
               <Text style={styles.tempText}>
-                {fmtTemp(mode === 'feels' ? scenario.feels : scenario.temp, unit)}
+                {fmtTemp(
+                  activeEntry?.temp ??
+                    (mode === 'feels' ? scenario.feels : scenario.temp),
+                  unit,
+                )}
                 {'\u00b0'}
               </Text>
             </View>
@@ -295,6 +330,17 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
             })}
           </View>
 
+          <View
+            ref={chartWrapRef}
+            onLayout={() => {
+              chartWrapRef.current?.measureInWindow((x) => {
+                chartLeftRef.current = x;
+              });
+            }}
+            {...chartPan.panHandlers}
+            accessible
+            accessibilityLabel="Hourly temperature chart. Drag across to explore the day."
+          >
           <Svg width={CHART_W} height={CHART_H}>
             <Defs>
               <LinearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -331,7 +377,7 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
               />
             ) : null}
 
-            {/* "Now" vertical line */}
+            {/* "Now" reference line (always visible) */}
             <Line
               x1={nowX}
               y1={CHART_PAD_T}
@@ -342,22 +388,9 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
               strokeDasharray="3,3"
               opacity={0.3}
             />
-            <Circle
-              cx={nowX}
-              cy={points[nowHour]?.y ?? CHART_PAD_T + PLOT_H / 2}
-              r={5}
-              fill={INK}
-            />
-            <SvgText
-              x={nowX}
-              y={CHART_PAD_T - 8}
-              textAnchor="middle"
-              fontSize={10}
-              fontWeight="600"
-              fill={INK}
-            >
-              Now
-            </SvgText>
+            {!isAtNow && (
+              <Circle cx={nowX} cy={points[nowHour]?.y ?? 0} r={3} fill={INK} opacity={0.35} />
+            )}
 
             {/* High marker */}
             <Circle cx={points[hiIdx].x} cy={points[hiIdx].y} r={4} fill="#e07738" />
@@ -425,7 +458,60 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
                 </SvgText>
               );
             })}
+
+            {/* Scrub indicator (pre-focused on now, drag to explore) */}
+            {activeEntry && (() => {
+              const calloutW = 78;
+              const calloutX = Math.max(
+                CHART_PAD_L,
+                Math.min(activeX - calloutW / 2, CHART_PAD_L + PLOT_W - calloutW),
+              );
+              const calloutLabel = `${isAtNow ? 'Now' : activeEntry.label} · ${fmtTemp(
+                activeEntry.temp,
+                unit,
+              )}°`;
+              return (
+                <G>
+                  <Line
+                    x1={activeX}
+                    y1={CHART_PAD_T - 4}
+                    x2={activeX}
+                    y2={CHART_PAD_T + PLOT_H}
+                    stroke={INK}
+                    strokeWidth={1.5}
+                    opacity={0.55}
+                  />
+                  <Circle
+                    cx={activeX}
+                    cy={activeY}
+                    r={6}
+                    fill={INK}
+                    stroke="#fff"
+                    strokeWidth={2}
+                  />
+                  <Rect
+                    x={calloutX}
+                    y={CHART_PAD_T - 28}
+                    width={calloutW}
+                    height={20}
+                    rx={10}
+                    fill={INK}
+                  />
+                  <SvgText
+                    x={calloutX + calloutW / 2}
+                    y={CHART_PAD_T - 14}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fontWeight="700"
+                    fill="#fff"
+                  >
+                    {calloutLabel}
+                  </SvgText>
+                </G>
+              );
+            })()}
           </Svg>
+          </View>
         </View>
 
         {/* Toggle: Actual / Feels Like */}
@@ -458,7 +544,7 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
           </View>
           <Text style={styles.caption}>
             {mode === 'actual'
-              ? 'Showing recorded temperatures for the next 24 hours.'
+              ? 'Drag along the chart to explore the day.'
               : 'Adjusted for wind chill and humidity effects.'}
           </Text>
         </View>

@@ -1,20 +1,25 @@
 // ---------------------------------------------------------------------------
 // useWeatherChat — chat state + streaming send against the `weatherChat`
 // Firebase callable, with local keyword-matched fallback when offline or
-// over the daily limit.
+// over the daily limit. Conversations persist per city as sessions
+// (ChatGPT-style history) via chatStore.
 // ---------------------------------------------------------------------------
 
-import { useCallback, useRef, useState } from 'react';
-import type { WeatherScenario, City } from '../data/weatherData';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cityId, type WeatherScenario, type City } from '../data/weatherData';
 import { ensureSignedIn, weatherChatCallable, type ChatTurn } from '../lib/firebase';
 import { buildWeatherContext } from '../data/weatherContext';
 import { generateLocalResponse } from '../utils/localAnswers';
+import {
+  loadSessions,
+  saveSessions,
+  upsertSession,
+  MAX_SESSION_MESSAGES,
+  type ChatMessage,
+  type ChatSession,
+} from '../data/chatStore';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-}
+export type { ChatMessage, ChatSession };
 
 interface UseWeatherChatArgs {
   wx: WeatherScenario | null | undefined;
@@ -26,7 +31,17 @@ interface UseWeatherChatResult {
   messages: ChatMessage[];
   isTyping: boolean;
   sendMessage: (text: string) => void;
-  reset: () => void;
+  /** Abort any in-flight stream without touching the conversation. */
+  stop: () => void;
+  /** Past conversations for the active location, newest first. */
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  /** Start a fresh conversation (kept out of history until a message is sent). */
+  newChat: () => void;
+  /** Resume a past conversation. */
+  openSession: (id: string) => void;
+  /** Remove a conversation from history. */
+  deleteSession: (id: string) => void;
 }
 
 const MAX_HISTORY = 10;
@@ -45,6 +60,88 @@ export function useWeatherChat({ wx, unit, city }: UseWeatherChatArgs): UseWeath
     messagesRef.current = next;
     setMessages(next);
   }, []);
+
+  // Location scope key; falls back to the location name when no coordinates
+  // are available.
+  const cityKey = useMemo(() => {
+    if (city) return cityId(city.lat, city.lon);
+    if (wx?.location) return wx.location;
+    return null;
+  }, [city, wx?.location]);
+
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const sessionsRef = useRef<ChatSession[]>([]);
+  const activeIdRef = useRef<string | null>(null);
+
+  // Only persist after this key's history has been loaded, so an initial
+  // empty commit can't clobber stored conversations.
+  const loadedKeyRef = useRef<string | null>(null);
+  // Skip the persist pass triggered by merely opening a stored session, so
+  // browsing history doesn't bump updatedAt.
+  const skipNextSaveRef = useRef(false);
+
+  const setActive = useCallback((id: string | null) => {
+    activeIdRef.current = id;
+    setActiveSessionId(id);
+  }, []);
+
+  const newSessionId = useCallback(
+    () => `s-${Date.now()}-${++seqRef.current}`,
+    [],
+  );
+
+  // Restore this location's history and resume its most recent conversation
+  useEffect(() => {
+    let cancelled = false;
+    abortRef.current?.abort();
+    setIsTyping(false);
+    commit([]);
+    sessionsRef.current = [];
+    setSessions([]);
+    loadedKeyRef.current = null;
+    setActive(newSessionId());
+    if (!cityKey) return;
+    loadSessions(cityKey).then((list) => {
+      if (cancelled) return;
+      sessionsRef.current = list;
+      setSessions(list);
+      if (list.length > 0) {
+        skipNextSaveRef.current = true;
+        setActive(list[0].id);
+        commit(list[0].messages);
+      }
+      loadedKeyRef.current = cityKey;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cityKey, commit, setActive, newSessionId]);
+
+  // Persist the active session on change (debounced — streaming updates
+  // arrive per chunk)
+  useEffect(() => {
+    if (!cityKey || loadedKeyRef.current !== cityKey) return;
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
+    if (messages.length === 0 || !activeIdRef.current) return;
+    const timer = setTimeout(() => {
+      const msgs = messagesRef.current.slice(-MAX_SESSION_MESSAGES);
+      const firstUser = msgs.find((m) => m.role === 'user');
+      const next = upsertSession(sessionsRef.current, {
+        id: activeIdRef.current as string,
+        title: (firstUser?.text ?? 'Conversation').slice(0, 80),
+        updatedAt: Date.now(),
+        messages: msgs,
+      });
+      sessionsRef.current = next;
+      setSessions(next);
+      saveSessions(cityKey, next);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [messages, cityKey]);
 
   const upsertAssistant = useCallback(
     (id: string, text: string) => {
@@ -150,12 +247,54 @@ export function useWeatherChat({ wx, unit, city }: UseWeatherChatArgs): UseWeath
     [wx, unit, city, commit, upsertAssistant],
   );
 
-  const reset = useCallback(() => {
+  const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    commit([]);
     setIsTyping(false);
-  }, [commit]);
+  }, []);
 
-  return { messages, isTyping, sendMessage, reset };
+  const newChat = useCallback(() => {
+    stop();
+    commit([]);
+    setActive(newSessionId());
+  }, [stop, commit, setActive, newSessionId]);
+
+  const openSession = useCallback(
+    (id: string) => {
+      const session = sessionsRef.current.find((s) => s.id === id);
+      if (!session) return;
+      stop();
+      skipNextSaveRef.current = true;
+      setActive(id);
+      commit(session.messages);
+    },
+    [stop, commit, setActive],
+  );
+
+  const deleteSession = useCallback(
+    (id: string) => {
+      const next = sessionsRef.current.filter((s) => s.id !== id);
+      sessionsRef.current = next;
+      setSessions(next);
+      if (cityKey) saveSessions(cityKey, next);
+      if (activeIdRef.current === id) {
+        stop();
+        commit([]);
+        setActive(newSessionId());
+      }
+    },
+    [cityKey, stop, commit, setActive, newSessionId],
+  );
+
+  return {
+    messages,
+    isTyping,
+    sendMessage,
+    stop,
+    sessions,
+    activeSessionId,
+    newChat,
+    openSession,
+    deleteSession,
+  };
 }
