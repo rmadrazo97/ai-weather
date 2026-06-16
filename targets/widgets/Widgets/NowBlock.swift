@@ -21,17 +21,23 @@ struct NowBlock: View {
     /// Whether to show the condition label line (Large hides it when the
     /// headline already carries the descriptive copy).
     var showLabel: Bool = true
+    /// Whether to show the city name line. Large hides it — its header already
+    /// renders "city · time-of-day", so showing it here would duplicate it
+    /// (and waste vertical space the systemLarge frame can't spare).
+    var showCity: Bool = true
 
     private var current: WidgetSnapshot.CurrentConditions { snapshot.current }
     private var today: WidgetSnapshot.DayForecast? { snapshot.days.first }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(snapshot.city.name)
-                .kicker()
-                .foregroundStyle(Color.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            if showCity {
+                Text(snapshot.city.name)
+                    .kicker()
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
 
             HStack(alignment: .top, spacing: 6) {
                 Text(Temp.format(current.temp, unit: snapshot.unit))

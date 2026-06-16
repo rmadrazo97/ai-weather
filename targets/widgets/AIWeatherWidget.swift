@@ -38,6 +38,12 @@ import SwiftUI
 enum WidgetDeepLink {
     static let scheme = "aiweather"
 
+    /// `aiweather://chat` — opens the app straight into the AI chat sheet.
+    /// Used by the quick-access chat button on the Medium/Large home widgets
+    /// (the only families WidgetKit lets host a tap target beyond the
+    /// whole-widget `widgetURL`). App.tsx routes this to `setChatOpen(true)`.
+    static var chatURL: URL { URL(string: "\(scheme)://chat")! }
+
     /// `aiweather://city/<encoded>` for the entry's city, or nil for the
     /// no-data / empty-state entry (nothing meaningful to route to — a plain
     /// app launch to the active city is the documented fallback there).

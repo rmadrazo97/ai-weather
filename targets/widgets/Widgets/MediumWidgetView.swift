@@ -41,12 +41,13 @@ struct MediumWidgetView: View {
             NowBlock(snapshot: snapshot, tempSize: 44, glyphSize: 28)
 
             VStack(alignment: .trailing, spacing: 6) {
-                if entry.isStale {
-                    StaleBadge()
-                } else {
-                    // Reserve the badge's height so the strip aligns whether or
-                    // not the stale indicator is shown.
-                    Color.clear.frame(height: 11)
+                // Top row: optional stale badge (leading) + quick-access AI chat
+                // button (trailing). The button's height sets the row, keeping the
+                // strip aligned whether or not the stale indicator is shown.
+                HStack(spacing: 6) {
+                    if entry.isStale { StaleBadge() }
+                    Spacer(minLength: 0)
+                    WidgetChatButton(size: 24)
                 }
                 HourlyStrip(
                     hours: snapshot.hourly,

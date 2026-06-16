@@ -41,7 +41,7 @@ struct LargeWidgetView: View {
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             // Header: city + coarse time-of-day (NOT a clock) + stale badge.
             HStack(alignment: .firstTextBaseline) {
                 Text(snapshot.city.name)
@@ -66,10 +66,13 @@ struct LargeWidgetView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Refresh weather")
                 }
+                // Quick-access AI chat (Medium/Large only — see ChatButton).
+                WidgetChatButton(size: 26)
             }
 
-            // Now-block (label suppressed — the headline carries the prose).
-            NowBlock(snapshot: snapshot, tempSize: 52, glyphSize: 36, showLabel: false)
+            // Now-block: city + label suppressed (the header shows the city, the
+            // headline carries the prose) so the systemLarge frame fits 5 days.
+            NowBlock(snapshot: snapshot, tempSize: 46, glyphSize: 32, showLabel: false, showCity: false)
 
             headlineView
 
@@ -139,7 +142,7 @@ struct LargeWidgetView: View {
         let domainLo = los.min() ?? snapshot.current.lo
         let domainHi = his.max() ?? snapshot.current.hi
 
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 DayRow(
                     day: day,

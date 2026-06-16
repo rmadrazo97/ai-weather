@@ -308,6 +308,13 @@ function AppInner() {
 
   const applyDeepLink = useCallback(
     (url: string) => {
+      // aiweather://chat — quick-access AI chat button on the Medium/Large
+      // widgets (WidgetDeepLink.chatURL). Opens the chat sheet over whatever
+      // city is active; no city argument to resolve.
+      if (/^aiweather:\/\/chat\/?$/i.test(url)) {
+        setChatOpen(true);
+        return;
+      }
       // Expecting aiweather://city/<encodedCityId>
       const match = url.match(/^aiweather:\/\/city\/(.+)$/i);
       if (!match) return;

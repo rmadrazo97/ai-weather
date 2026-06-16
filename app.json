@@ -3,6 +3,7 @@
     "name": "AI Weather",
     "slug": "ai-weather",
     "version": "1.0.0",
+    "scheme": "aiweather",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
