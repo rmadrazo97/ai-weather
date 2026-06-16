@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -23,6 +24,11 @@ import StatusBanner from './src/components/StatusBanner';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { PRESET_CITIES } from './src/data/weatherData';
 import type { City, Condition, WeatherScenario } from './src/data/weatherData';
+import {
+  writeWidgetSnapshot,
+  writeUnit,
+  removeCitySnapshot,
+} from './src/widgets/snapshot';
 import { fetchWeather, fetchCitiesCurrent, searchCities } from './src/data/weatherApi';
 import type { CityCurrent } from './src/data/weatherApi';
 import { saveWx, loadWx } from './src/data/weatherCache';
@@ -80,7 +86,7 @@ function AppInner() {
   );
 
   // UI state
-  const [unit, setUnit] = useState<'C' | 'F'>('C');
+  const [unit, setUnit] = useStorage<'C' | 'F'>('wxai.unit', 'C');
   const [chatOpen, setChatOpen] = useState(false);
   const [citiesOpen, setCitiesOpen] = useState(false);
   const [hourlyOpen, setHourlyOpen] = useState(false);
@@ -94,6 +100,12 @@ function AppInner() {
 
   const scrollRef = useRef<ScrollView>(null);
   const myLocation = useMyLocation();
+
+  // Mirror the latest unit into a ref so loadWeather can write the widget
+  // snapshot with the current unit without taking `unit` as a dependency
+  // (which would re-create the callback and re-trigger the fetch effect).
+  const unitRef = useRef(unit);
+  unitRef.current = unit;
 
   // Resolve current city
   const city = activeCity ?? PRESET_CITIES[0];
@@ -164,10 +176,17 @@ function AppInner() {
       setWx(data);
       setLoadFailed(false);
       saveWx(c.id, data);
+      writeWidgetSnapshot(c, data, unitRef.current);
     } catch {
       const cached = await loadWx(c.id);
       if (cached) {
         setWx({ ...cached.wx, location: c.name, staleAt: cached.ts });
+        writeWidgetSnapshot(
+          c,
+          { ...cached.wx, location: c.name },
+          unitRef.current,
+          cached.ts
+        );
       } else {
         setWx(null);
         setLoadFailed(true);
@@ -243,10 +262,107 @@ function AppInner() {
   const removeCity = useCallback(
     (id: string) => {
       setCustomCities(customCities.filter((c) => c.id !== id));
+      // Prune the removed custom city's widget snapshot + index entry.
+      removeCitySnapshot(id);
       if (city.id === id) selectCity(PRESET_CITIES[0]);
     },
     [customCities, setCustomCities, city.id, selectCity]
   );
+
+  // Persist the unit (wxai.unit) and mirror it into the App Group's shared
+  // UserDefaults (wxai.widget.unit) so the widget agrees on °C/°F. Independent
+  // of any weather commit — see PRD 01 US-000.
+  const handleUnitChange = useCallback(
+    (next: 'C' | 'F') => {
+      setUnit(next);
+      writeUnit(next);
+    },
+    [setUnit]
+  );
+
+  // ---------------------------------------------------------------------
+  // Widget deep linking — aiweather://city/<cityId> (PRD 06a)
+  //
+  // Resolve the (percent-decoded) cityId against the composite city list
+  // [myLocation, ...PRESET_CITIES, ...customCities] and set it active. Links
+  // arriving before hydration (cities + active + migration) are buffered in a
+  // ref and applied once ready; unknown/malformed ids no-op to the active city.
+  // ---------------------------------------------------------------------
+  const linkReady =
+    citiesHydrated && activeHydrated && migrationDone;
+  const pendingLinkRef = useRef<string | null>(null);
+  const linkReadyRef = useRef(linkReady);
+  linkReadyRef.current = linkReady;
+
+  const resolveCityId = useCallback(
+    (id: string): City | null => {
+      const list: City[] = [
+        ...(myLocation.city ? [myLocation.city] : []),
+        ...PRESET_CITIES,
+        ...customCities,
+      ];
+      return list.find((c) => c.id === id) ?? null;
+    },
+    [myLocation.city, customCities]
+  );
+
+  const applyDeepLink = useCallback(
+    (url: string) => {
+      // aiweather://chat — quick-access AI chat button on the Medium/Large
+      // widgets (WidgetDeepLink.chatURL). Opens the chat sheet over whatever
+      // city is active; no city argument to resolve.
+      if (/^aiweather:\/\/chat\/?$/i.test(url)) {
+        setChatOpen(true);
+        return;
+      }
+      // Expecting aiweather://city/<encodedCityId>
+      const match = url.match(/^aiweather:\/\/city\/(.+)$/i);
+      if (!match) return;
+      let id: string;
+      try {
+        id = decodeURIComponent(match[1]);
+      } catch {
+        return; // malformed percent-encoding → no-op
+      }
+      const target = resolveCityId(id);
+      if (target) setActiveCity(target);
+    },
+    [resolveCityId, setActiveCity]
+  );
+  const applyDeepLinkRef = useRef(applyDeepLink);
+  applyDeepLinkRef.current = applyDeepLink;
+
+  // Cold start: read the launch URL once. Warm start: listen for subsequent
+  // URLs. Buffer any link that arrives before state has hydrated. The handler
+  // reads the latest ready-state/resolver via refs so it never goes stale.
+  useEffect(() => {
+    let cancelled = false;
+    Linking.getInitialURL()
+      .then((url) => {
+        if (cancelled || !url) return;
+        pendingLinkRef.current = url;
+      })
+      .catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (linkReadyRef.current) applyDeepLinkRef.current(url);
+      else pendingLinkRef.current = url;
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Once hydration completes, flush any buffered link exactly once.
+  useEffect(() => {
+    if (!linkReady) return;
+    const pending = pendingLinkRef.current;
+    if (pending) {
+      pendingLinkRef.current = null;
+      applyDeepLink(pending);
+    }
+  }, [linkReady, applyDeepLink]);
 
   // Scroll to details
   const showDetails = useCallback(() => {
@@ -310,7 +426,7 @@ function AppInner() {
                 wx={wx}
                 unit={unit}
                 outline={true}
-                onUnitChange={setUnit}
+                onUnitChange={handleUnitChange}
                 onShowDetails={showDetails}
                 onOpenCities={() => setCitiesOpen(true)}
                 onExpandHourly={() => setHourlyOpen(true)}
