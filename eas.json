@@ -22,7 +22,7 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "TODO_APP_STORE_CONNECT_APP_ID"
+        "ascAppId": "6779910676"
       },
       "android": {
         "serviceAccountKeyPath": "./secrets/play-service-account.json",
