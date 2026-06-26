@@ -23,7 +23,12 @@
  */
 module.exports = (config) => ({
   type: "widget",
-  name: "AI Weather",
+  // Target name MUST be distinct from the app target. "AI Weather" sanitizes to
+  // "AIWeather" — identical to the main app target — which made Xcode assign the
+  // widget's provisioning profile to the app target and fail code signing.
+  // User-facing widget name comes from the WidgetKit configurationDisplayName,
+  // not this target name.
+  name: "AIWeatherWidget",
   // Suite-wide floor. Do NOT let this diverge from the app's 16.4 or rise to
   // the apple-targets 18.0 default.
   deploymentTarget: "16.4",
