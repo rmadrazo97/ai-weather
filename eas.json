@@ -16,7 +16,8 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "environment": "production"
+      "environment": "production",
+      "node": "22.22.2"
     }
   },
   "submit": {
