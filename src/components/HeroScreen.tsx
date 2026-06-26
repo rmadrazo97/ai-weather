@@ -13,6 +13,7 @@ import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WeatherIcon from './WeatherIcon';
 import { fmtTemp } from '../utils/helpers';
+import { useLiveClock } from '../utils/liveClock';
 import { INK, MUTED, FAINT, HAIR, RAIN_BLUE } from '../utils/colors';
 import type { WeatherScenario } from '../data/weatherData';
 
@@ -351,6 +352,7 @@ export default function HeroScreen({
   onAskAI,
 }: HeroScreenProps) {
   const insets = useSafeAreaInsets();
+  const liveTime = useLiveClock(wx.utcOffsetSeconds, wx.time);
   const temp = fmtTemp(wx.temp, unit);
   const hi = fmtTemp(wx.hi, unit);
   const lo = fmtTemp(wx.lo, unit);
@@ -377,7 +379,7 @@ export default function HeroScreen({
           {'  '}{wx.location.toUpperCase()}
         </Text>
         <Text style={styles.locationDot}> {'\u00b7'} </Text>
-        <Text style={styles.locationTime}>{wx.time}</Text>
+        <Text style={styles.locationTime}>{liveTime}</Text>
       </View>
 
       {/* ---- AI Headline ---- */}
@@ -446,7 +448,10 @@ export default function HeroScreen({
 const styles = StyleSheet.create({
   container: {
     width: SCREEN_W,
-    height: SCREEN_H,
+    // minHeight (not a fixed height) so on short viewports the content flows and
+    // pushes DetailsView down instead of overflowing into it (the SUNLIGHT /
+    // "Golden hour" overlap). On tall screens the flex spacers still fill it.
+    minHeight: SCREEN_H,
     paddingHorizontal: 24,
     paddingBottom: Platform.OS === 'ios' ? 34 : 24,
   },

@@ -43,6 +43,8 @@ export interface WeatherScenario {
   label: string;
   location: string;
   time: string;
+  /** City UTC offset in seconds (for the live local clock). */
+  utcOffsetSeconds: number;
   temp: number;
   feels: number;
   humidity: number;

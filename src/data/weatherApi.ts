@@ -366,6 +366,8 @@ function buildScenario(
     label,
     location: displayName,
     time: formatCurrentTime(currentTimeIso),
+    utcOffsetSeconds:
+      typeof data.utc_offset_seconds === 'number' ? data.utc_offset_seconds : 0,
     temp,
     feels,
     humidity,

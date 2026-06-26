@@ -6,6 +6,7 @@
 
 import type { WeatherScenario, City } from './weatherData';
 import type { WeatherChatContext } from '../lib/firebase';
+import { formatLocalTime } from '../utils/liveClock';
 
 const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, max) : s);
 
@@ -48,7 +49,12 @@ export function buildWeatherContext(
 
   if (wx.summary) lines.push(wx.summary);
 
-  const localTime = wx.time || new Date().toLocaleString();
+  // Live local time for the city (the stored wx.time is rounded + frozen at
+  // fetch); fall back to the stored value only if the offset is unavailable.
+  const localTime =
+    typeof wx.utcOffsetSeconds === 'number'
+      ? formatLocalTime(wx.utcOffsetSeconds)
+      : wx.time || new Date().toLocaleString();
 
   return {
     location: clip(city?.name || wx.location || 'Unknown', 80),

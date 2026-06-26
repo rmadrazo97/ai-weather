@@ -10,6 +10,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Linking,
+  AppState,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -101,6 +102,10 @@ function AppInner() {
   const scrollRef = useRef<ScrollView>(null);
   const myLocation = useMyLocation();
 
+  // Epoch ms of the last successful weather load, so a foreground resume can
+  // decide whether the on-screen data has gone stale.
+  const lastLoadAtRef = useRef(0);
+
   // Mirror the latest unit into a ref so loadWeather can write the widget
   // snapshot with the current unit without taking `unit` as a dependency
   // (which would re-create the callback and re-trigger the fetch effect).
@@ -109,6 +114,11 @@ function AppInner() {
 
   // Resolve current city
   const city = activeCity ?? PRESET_CITIES[0];
+
+  // Mirror the active city into a ref so the AppState foreground listener can
+  // refresh the right city without re-subscribing on every city change.
+  const cityRef = useRef(city);
+  cityRef.current = city;
 
   // ---------------------------------------------------------------------
   // One-time migration of v1 storage (names only) → v2 (full City objects)
@@ -175,6 +185,7 @@ function AppInner() {
       const data = await fetchWeather(c.lat, c.lon, c.name);
       setWx(data);
       setLoadFailed(false);
+      lastLoadAtRef.current = Date.now();
       saveWx(c.id, data);
       writeWidgetSnapshot(c, data, unitRef.current);
     } catch {
@@ -204,6 +215,21 @@ function AppInner() {
     loadWeather(city);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [migrationDone, city.id, loadWeather]);
+
+  // Refresh on foreground resume: weather (and the displayed time) shouldn't
+  // stay frozen at whatever it was when the app was last opened. If the data is
+  // older than the threshold when the app becomes active again, refetch.
+  const FOREGROUND_STALE_MS = 5 * 60 * 1000; // 5 minutes
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      if (!migrationDone) return;
+      if (Date.now() - lastLoadAtRef.current < FOREGROUND_STALE_MS) return;
+      loadWeather(cityRef.current, true);
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [migrationDone, loadWeather]);
 
   // ---------------------------------------------------------------------
   // Batch city-list conditions, refreshed when the sheet opens (>10 min stale)

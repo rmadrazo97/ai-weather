@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI Weather",
     "slug": "ai-weather",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "aiweather",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

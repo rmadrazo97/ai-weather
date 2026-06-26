@@ -23,6 +23,7 @@ import Svg, {
 import WeatherIcon from './WeatherIcon';
 import type { WeatherScenario, Condition } from '../data/weatherData';
 import { fmtTemp } from '../utils/helpers';
+import { useLiveClock } from '../utils/liveClock';
 import { INK, MUTED, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,7 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
 }) => {
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const liveTime = useLiveClock(wx?.utcOffsetSeconds, wx?.time);
 
   const [mode, setMode] = useState<'actual' | 'feels'>('actual');
   // Scrubbed hour; null means "follow the current time"
@@ -275,7 +277,7 @@ const HourlyExpandedSheet: React.FC<HourlyExpandedSheetProps> = ({
             <Text style={styles.sectionLabel}>HOURLY FORECAST</Text>
             <Text style={styles.locationName}>{scenario.location}</Text>
             <Text style={styles.headerTime}>
-              {isAtNow ? scenario.time : activeEntry?.label ?? scenario.time}
+              {isAtNow ? liveTime : activeEntry?.label ?? liveTime}
             </Text>
           </View>
           <View style={styles.headerRight}>

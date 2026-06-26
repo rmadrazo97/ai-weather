@@ -17,6 +17,8 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { WeatherScenario, City } from '../data/weatherData';
 import { useWeatherChat } from '../hooks/useWeatherChat';
+import { useLiveClock } from '../utils/liveClock';
+import { stripMarkdown } from '../utils/stripMarkdown';
 import { INK, MUTED, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
@@ -168,6 +170,7 @@ const TypingIndicator: React.FC = () => {
 
 const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city }) => {
   const insets = useSafeAreaInsets();
+  const liveTime = useLiveClock(wx?.utcOffsetSeconds, wx?.time);
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_H)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -419,7 +422,7 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
               <Text style={styles.headerTitle}>WeatherAI</Text>
               {wx && (
                 <Text style={styles.headerSubtitle}>
-                  {wx.location} · {wx.time}
+                  {wx.location} · {liveTime}
                 </Text>
               )}
             </View>
@@ -572,7 +575,7 @@ const ChatSheet: React.FC<ChatSheetProps> = ({ wx, unit, visible, onClose, city 
                       msg.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextAssistant,
                     ]}
                   >
-                    {msg.text}
+                    {msg.role === 'assistant' ? stripMarkdown(msg.text) : msg.text}
                   </Text>
                 </View>
               </View>
