@@ -7,7 +7,7 @@
     "expo": "~56.0.9",
     "expo-blur": "~56.0.3",
     "expo-linear-gradient": "56.0.4",
-    "expo-location": "56.0.16",
+    "expo-location": "~56.0.18",
     "expo-splash-screen": "~56.0.10",
     "expo-status-bar": "~56.0.4",
     "expo-updates": "~56.0.18",
@@ -31,8 +31,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web",
-    "eas-build-pre-install": "rm -f package-lock.json"
+    "web": "expo start --web"
   },
   "private": true
 }
