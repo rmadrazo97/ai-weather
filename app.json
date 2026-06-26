@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.myweatherai.app",
+      "appleTeamId": "WZ43D29S4L",
       "buildNumber": "5",
       "entitlements": {
         "com.apple.security.application-groups": ["group.com.myweatherai.app"]
