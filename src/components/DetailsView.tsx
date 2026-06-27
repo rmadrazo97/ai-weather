@@ -20,8 +20,6 @@ import Svg, {
 import WeatherIcon from './WeatherIcon';
 import MetricTile from './MetricTile';
 import MetricTimelineSheet from './MetricTimelineSheet';
-import HourlyForecastCard from './HourlyForecastCard';
-import HighlightCard from './HighlightCard';
 import { fmtTemp } from '../utils/helpers';
 import { INK, MUTED, FAINT, HAIR, RAIN_BLUE } from '../utils/colors';
 import { METRICS } from '../data/metrics';
@@ -128,17 +126,13 @@ function daylightDuration(sunrise: string, sunset: string): string {
 interface DetailsViewProps {
   wx: WeatherScenario;
   unit: 'C' | 'F';
-  /** Opens the AI chat (wired to the HighlightCard "View Highlights" pill). */
-  onAskAI?: () => void;
-  /** Optional hook for expanding the full details/hourly view. */
-  onShowDetails?: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
+const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit }) => {
   const isNight = wx.isNight;
   const sunPct = wx.sunPct as number;
 
@@ -409,21 +403,7 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
       </Section>
 
       {/* ================================================================= */}
-      {/* 5. HOURLY FORECAST                                                */}
-      {/* ================================================================= */}
-      <Section index={sIdx++}>
-        <HourlyForecastCard wx={wx} unit={unit} />
-      </Section>
-
-      {/* ================================================================= */}
-      {/* 6. HIGHLIGHTS                                                     */}
-      {/* ================================================================= */}
-      <Section index={sIdx++}>
-        <HighlightCard wx={wx} unit={unit} onPress={() => onAskAI?.()} />
-      </Section>
-
-      {/* ================================================================= */}
-      {/* 7. FOOTER                                                         */}
+      {/* 5. FOOTER                                                         */}
       {/* ================================================================= */}
       <Section index={sIdx++}>
         <View style={styles.footer}>
