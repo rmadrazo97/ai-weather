@@ -70,21 +70,27 @@ struct LargeWidgetView: View {
                 WidgetChatButton(size: 26)
             }
 
-            // Now-block: city + label suppressed (the header shows the city, the
-            // headline carries the prose) so the systemLarge frame fits 5 days.
+            // Hero row: now-block (city + label suppressed — the header shows the
+            // city, the headline carries the prose) beside the condition glyph,
+            // with the headline tucked under it. Keeps the top compact so the AQI
+            // bar + metric tiles + hourly strip all fit the systemLarge frame.
             NowBlock(snapshot: snapshot, tempSize: 46, glyphSize: 32, showLabel: false, showCity: false)
 
             headlineView
 
-            // Summary fills remaining vertical space when present (FR-6 guard).
-            if !snapshot.summary.isEmpty {
-                Text(snapshot.summary)
-                    .font(.body15)
-                    .foregroundStyle(Color.muted)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
-                    .fixedSize(horizontal: false, vertical: true)
+            // The redesign centerpiece: colorful AQI severity bar (when present).
+            if let aqi = snapshot.current.aqi {
+                AQIBar(aqi: aqi, word: snapshot.current.aqiWord)
             }
+
+            // Colorful metric tiles — up to 6 (feels/humidity/wind/UV/precip/dew),
+            // laid out 3-across so they fill the card width. Optional fields
+            // (dir/uvWord/dew) degrade gracefully inside the builder.
+            MetricGrid(
+                metrics: Array(MetricBuilder.metrics(for: snapshot).prefix(6)),
+                columns: 3,
+                compact: true
+            )
 
             Divider().overlay(Color.hair)
 
@@ -94,10 +100,6 @@ struct LargeWidgetView: View {
                 isFirstEntry: isFirstEntry,
                 glyphSize: 18
             )
-
-            Divider().overlay(Color.hair)
-
-            fiveDay
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .widgetContainer(gradient: gradient(for: snapshot.current.cond))
@@ -130,97 +132,6 @@ struct LargeWidgetView: View {
         }
     }
 
-    // MARK: 5-day forecast (named day fields only — never positional)
-
-    @ViewBuilder
-    private var fiveDay: some View {
-        // Guard empty days (FR-6); cap at 5 rows.
-        let days = Array(snapshot.days.prefix(5))
-        // Shared lo/hi domain so each row's range bar is comparable.
-        let los = days.map(\.lo)
-        let his = days.map(\.hi)
-        let domainLo = los.min() ?? snapshot.current.lo
-        let domainHi = his.max() ?? snapshot.current.hi
-
-        VStack(spacing: 4) {
-            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                DayRow(
-                    day: day,
-                    unit: snapshot.unit,
-                    domainLo: domainLo,
-                    domainHi: domainHi
-                )
-            }
-        }
-    }
-}
-
-// MARK: - Single 5-day row
-
-private struct DayRow: View {
-    let day: WidgetSnapshot.DayForecast
-    let unit: String
-    let domainLo: Int
-    let domainHi: Int
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(day.label)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.ink)
-                .frame(width: 40, alignment: .leading)
-                .lineLimit(1)
-
-            WeatherGlyph(cond: day.cond, size: 16, weight: .regular)
-                .foregroundStyle(Color.ink)
-                .frame(width: 22)
-                .accessibilityHidden(true)
-
-            // pop% when > 0, in rainBlue (matches the strip convention).
-            Text(day.pop > 0 ? "\(day.pop)%" : " ")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.rainBlue)
-                .frame(width: 30, alignment: .leading)
-
-            Text(Temp.format(day.lo, unit: unit))
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.muted)
-                .frame(width: 38, alignment: .trailing)
-
-            rangeBar
-                .frame(maxWidth: .infinity)
-
-            Text(Temp.format(day.hi, unit: unit))
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color.ink)
-                .frame(width: 38, alignment: .leading)
-        }
-    }
-
-    /// A simple lo→hi range bar normalized over the 5-day domain. ViewThatFits
-    /// degrades to a numeric-only row when horizontal space is tight (no iOS
-    /// 17-only API on the 16.4 path).
-    private var rangeBar: some View {
-        ViewThatFits(in: .horizontal) {
-            GeometryReader { geo in
-                let span = max(1, CGFloat(domainHi - domainLo))
-                let leading = CGFloat(day.lo - domainLo) / span
-                let width = CGFloat(day.hi - day.lo) / span
-                Capsule()
-                    .fill(Color.hair)
-                    .frame(height: 4)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.ink.opacity(0.65))
-                            .frame(width: max(6, geo.size.width * width), height: 4)
-                            .offset(x: geo.size.width * leading)
-                    }
-            }
-            .frame(height: 4)
-            // Tight fallback: a thin hairline so the row never clips.
-            Capsule().fill(Color.hair).frame(height: 4)
-        }
-    }
 }
 
 // MARK: - Preview
@@ -248,7 +159,8 @@ private func largePreviewEntry(
     var c = base.current
     c = .init(temp: temp, feels: c.feels, hi: c.hi, lo: c.lo, cond: cond, label: label,
               isNight: isNight, humidity: c.humidity, wind: c.wind,
-              precipProb: c.precipProb, uv: c.uv, aqi: c.aqi, aqiWord: c.aqiWord)
+              precipProb: c.precipProb, uv: c.uv, aqi: c.aqi, aqiWord: c.aqiWord,
+              dir: c.dir, uvWord: c.uvWord, dew: c.dew)
     let sun = WidgetSnapshot.SunInfo(
         sunrise: base.sun.sunrise, sunset: base.sun.sunset,
         srHour: base.sun.srHour, ssHour: base.sun.ssHour,

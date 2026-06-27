@@ -66,6 +66,13 @@ export interface WidgetCurrent {
   uv: number;
   aqi?: number;
   aqiWord?: string;
+  // --- Richer metric fields (SCHEMA_VERSION 1, additive/optional) ------------
+  // Added for the colorful tile redesign. Backward compatible: the Swift reader
+  // decodes them as optionals, so older writers (without these keys) still work
+  // and older readers ignore them. Keep these AFTER the original fields.
+  dir?: string; // wind compass direction, e.g. 'NW' (wx.dir)
+  uvWord?: string; // UV qualitative word, e.g. 'High' (wx.uvWord)
+  dew?: number; // dew point °C, integer (wx.dew)
 }
 
 export interface WidgetHeadline {
@@ -235,6 +242,11 @@ export function buildSnapshot(
       uv: wx.uv,
       ...(wx.aqi !== undefined ? { aqi: wx.aqi } : {}),
       ...(wx.aqiWord !== undefined ? { aqiWord: wx.aqiWord } : {}),
+      // Richer metric fields for the tile redesign (always present on the
+      // WeatherScenario; written unconditionally, decoded as optionals in Swift).
+      dir: wx.dir,
+      uvWord: wx.uvWord,
+      dew: wx.dew,
     },
     headline: {
       pre: wx.headline.pre,

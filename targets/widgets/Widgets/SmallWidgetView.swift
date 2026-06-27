@@ -64,17 +64,13 @@ struct SmallWidgetView: View {
                     .accessibilityHidden(true)
             }
 
-            // Condition label.
-            Text(current.label)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.muted)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer(minLength: 2)
-
-            // hi/lo from days[0] (FR-3); falls back to current extremes if empty.
+            // Condition label + hi/lo on one tight line so the hero metric below
+            // gets its own row (FR-3 extremes from days[0], current fallback).
             HStack(spacing: 6) {
+                Text(current.label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 4)
                 Text("H:\(Temp.format(today?.hi ?? current.hi, unit: snapshot.unit))")
                 Text("L:\(Temp.format(today?.lo ?? current.lo, unit: snapshot.unit))")
             }
@@ -82,11 +78,34 @@ struct SmallWidgetView: View {
             .foregroundStyle(Color.muted)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
+
+            Spacer(minLength: 4)
+
+            // Hero metric: the colorful AQI pill when air-quality data is present
+            // (the redesign's signature readout), else a feels-like chip. Both
+            // degrade gracefully; ViewThatFits drops the row before it clips.
+            heroMetric
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .widgetContainer(gradient: gradient(for: current.cond))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(a11yLabel(for: snapshot))
+    }
+
+    @ViewBuilder
+    private var heroMetric: some View {
+        if let aqi = current.aqi {
+            AQIPill(aqi: aqi, word: current.aqiWord)
+        } else {
+            MetricChip(
+                icon: "thermometer.medium",
+                value: Temp.format(current.feels, unit: snapshot.unit),
+                label: "Feels like",
+                tint: MetricPalette.feels,
+                compact: true
+            )
+            .accessibilityHidden(true)
+        }
     }
 }
 
@@ -114,7 +133,8 @@ private func smallPreviewEntry(
     var c = base.current
     c = .init(temp: temp, feels: c.feels, hi: c.hi, lo: c.lo, cond: cond, label: label,
               isNight: cond == .night, humidity: c.humidity, wind: c.wind,
-              precipProb: c.precipProb, uv: c.uv, aqi: c.aqi, aqiWord: c.aqiWord)
+              precipProb: c.precipProb, uv: c.uv, aqi: c.aqi, aqiWord: c.aqiWord,
+              dir: c.dir, uvWord: c.uvWord, dew: c.dew)
     let snap = WidgetSnapshot(
         schemaVersion: 1, generatedAt: base.generatedAt, tzOffsetMinutes: 0, unit: unit,
         staleAt: isStale ? 0 : nil, city: cityRef, current: c, headline: base.headline,

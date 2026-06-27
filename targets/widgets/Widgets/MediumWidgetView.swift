@@ -37,26 +37,45 @@ struct MediumWidgetView: View {
     }
 
     private var content: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 14) {
             NowBlock(snapshot: snapshot, tempSize: 44, glyphSize: 28)
+                .frame(width: 128, alignment: .leading)
 
-            VStack(alignment: .trailing, spacing: 6) {
+            VStack(alignment: .leading, spacing: 7) {
                 // Top row: optional stale badge (leading) + quick-access AI chat
                 // button (trailing). The button's height sets the row, keeping the
-                // strip aligned whether or not the stale indicator is shown.
+                // content below aligned whether or not the stale indicator shows.
                 HStack(spacing: 6) {
                     if entry.isStale { StaleBadge() }
                     Spacer(minLength: 0)
                     WidgetChatButton(size: 24)
                 }
-                HourlyStrip(
-                    hours: snapshot.hourly,
-                    unit: snapshot.unit,
-                    isFirstEntry: isFirstEntry,
-                    glyphSize: 18
-                )
+
+                // The redesign's right column: the colorful AQI severity bar (when
+                // air-quality data is present) over a row of metric chips. Falls
+                // back to the hourly strip when there's no AQI to anchor the card.
+                if let aqi = snapshot.current.aqi {
+                    AQIBar(aqi: aqi, word: snapshot.current.aqiWord, compact: true)
+                    MetricGrid(
+                        metrics: Array(MetricBuilder.metrics(for: snapshot).prefix(3)),
+                        columns: 3,
+                        compact: true
+                    )
+                } else {
+                    MetricGrid(
+                        metrics: Array(MetricBuilder.metrics(for: snapshot).prefix(3)),
+                        columns: 3,
+                        compact: true
+                    )
+                    HourlyStrip(
+                        hours: snapshot.hourly,
+                        unit: snapshot.unit,
+                        isFirstEntry: isFirstEntry,
+                        glyphSize: 18
+                    )
+                }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .widgetContainer(gradient: gradient(for: snapshot.current.cond))
@@ -88,7 +107,8 @@ private func mediumPreviewEntry(
     var c = base.current
     c = .init(temp: temp, feels: c.feels, hi: c.hi, lo: c.lo, cond: cond, label: label,
               isNight: cond == .night, humidity: c.humidity, wind: c.wind,
-              precipProb: c.precipProb, uv: c.uv, aqi: c.aqi, aqiWord: c.aqiWord)
+              precipProb: c.precipProb, uv: c.uv, aqi: c.aqi, aqiWord: c.aqiWord,
+              dir: c.dir, uvWord: c.uvWord, dew: c.dew)
     let snap = WidgetSnapshot(
         schemaVersion: 1, generatedAt: base.generatedAt, tzOffsetMinutes: 0, unit: unit,
         staleAt: isStale ? 0 : nil, city: cityRef, current: c, headline: base.headline,

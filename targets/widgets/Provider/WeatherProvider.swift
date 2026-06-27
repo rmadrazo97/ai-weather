@@ -146,7 +146,12 @@ struct WeatherProvider: TimelineProvider {
                 precipProb: point.pop,
                 uv: current.uv,
                 aqi: current.aqi,
-                aqiWord: current.aqiWord
+                aqiWord: current.aqiWord,
+                // Carry the additive metric fields forward unchanged — they are
+                // constant across the hourly projection (only temp/cond/pop move).
+                dir: current.dir,
+                uvWord: current.uvWord,
+                dew: current.dew
             )
 
             // Entry-relative hourly slice: drop the hours already behind this

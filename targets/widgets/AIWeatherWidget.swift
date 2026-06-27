@@ -77,7 +77,7 @@ struct AIWeatherHomeWidget: Widget {
             HomeWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("AI Weather")
-        .description("Current conditions, hourly, and a 5-day forecast for your city.")
+        .description("Current conditions, air quality, key metrics, and the hourly outlook for your city.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

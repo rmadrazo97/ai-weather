@@ -72,6 +72,54 @@ struct WidgetSnapshot: Codable {
         let uv: Int
         let aqi: Int?
         let aqiWord: String?
+
+        // Richer metric fields (additive; tolerant-decoded as optionals). Mirror
+        // the matching keys added in src/widgets/snapshot.ts. Older snapshots
+        // without these keys decode to nil — render sites must guard on nil.
+        let dir: String?         // wind compass direction, e.g. "NW"
+        let uvWord: String?      // UV qualitative word, e.g. "High"
+        let dew: Int?            // dew point °C
+
+        // Explicit memberwise initializer with defaults for the additive fields,
+        // so every existing call site (placeholder / previews / provider rebuild
+        // / fetcher) compiles unchanged while new call sites can pass the extras.
+        // Codable's synthesized `init(from:)` is unaffected and still decodes all
+        // keys (missing optionals → nil).
+        init(
+            temp: Int,
+            feels: Int,
+            hi: Int,
+            lo: Int,
+            cond: Condition,
+            label: String,
+            isNight: Bool,
+            humidity: Int,
+            wind: Int,
+            precipProb: Int,
+            uv: Int,
+            aqi: Int?,
+            aqiWord: String?,
+            dir: String? = nil,
+            uvWord: String? = nil,
+            dew: Int? = nil
+        ) {
+            self.temp = temp
+            self.feels = feels
+            self.hi = hi
+            self.lo = lo
+            self.cond = cond
+            self.label = label
+            self.isNight = isNight
+            self.humidity = humidity
+            self.wind = wind
+            self.precipProb = precipProb
+            self.uv = uv
+            self.aqi = aqi
+            self.aqiWord = aqiWord
+            self.dir = dir
+            self.uvWord = uvWord
+            self.dew = dew
+        }
     }
 
     struct HeadlineParts: Codable {

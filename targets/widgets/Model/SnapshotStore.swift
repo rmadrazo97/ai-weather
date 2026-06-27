@@ -77,7 +77,10 @@ enum SnapshotStore {
             precipProb: 10,
             uv: 6,
             aqi: 32,
-            aqiWord: "Good"
+            aqiWord: "Good",
+            dir: "NW",
+            uvWord: "High",
+            dew: 11
         ),
         headline: .init(
             pre: "A ",
