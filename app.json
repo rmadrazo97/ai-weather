@@ -58,8 +58,8 @@
           "imageWidth": 200
         }
       ],
-      "expo-notifications",
-      "expo-quick-actions"
+      "expo-quick-actions",
+      "./plugins/withoutApsEnvironment"
     ],
     "extra": {
       "eas": {
