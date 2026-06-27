@@ -38,13 +38,22 @@ export function buildWeatherContext(
     lines.push(`Coming hours: ${hourly}`);
   }
 
+  if (wx.daySeries.length > 0) {
+    // Full 24h curve, downsampled to ~every 3 hours: "9AM 14° 10%; 12PM 18° 5%".
+    const series = wx.daySeries
+      .filter((e) => e.hour % 3 === 0)
+      .map((e) => `${e.label} ${e.temp}° ${e.pop}%`)
+      .join('; ');
+    lines.push(`Today hour-by-hour: ${series}`);
+  }
+
   if (wx.days.length > 1) {
-    // DayTuple = [label, cond, lo, hi, popMax]
-    const days = wx.days
-      .slice(1, 4)
+    // DayTuple = [label, cond, lo, hi, popMax]; send every available future day.
+    const future = wx.days.slice(1);
+    const days = future
       .map((d) => `${d[0]} ${d[1]} ${d[3]}°/${d[2]}° ${d[4]}% rain`)
       .join('; ');
-    lines.push(`Next days: ${days}`);
+    lines.push(`Next ${future.length} days: ${days}`);
   }
 
   if (wx.summary) lines.push(wx.summary);

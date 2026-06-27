@@ -15,9 +15,9 @@ function errorText(action: string, err: unknown): string {
 }
 
 export const getWeatherTool = tool(
-  async ({ lat, lon }) => {
+  async ({ lat, lon, days }) => {
     try {
-      const data = await fetchForecast(lat, lon);
+      const data = await fetchForecast(lat, lon, days);
       return formatForecast(data);
     } catch (err) {
       return errorText('fetch the weather forecast', err);
@@ -26,11 +26,20 @@ export const getWeatherTool = tool(
   {
     name: 'get_weather',
     description:
-      'Get current conditions, 24-hour, and 7-day weather forecast for a latitude/longitude. ' +
+      'Get current conditions, a 24-hour outlook, and a multi-day daily forecast (up to 14 days, ' +
+      'with high/low and feels-like temps, precip chance, and max wind) for a latitude/longitude. ' +
+      'Use the optional "days" argument to request only as many days as you need. ' +
       'If you only have a city name (not coordinates), call geocode_city first to get lat/lon.',
     schema: z.object({
       lat: z.number().min(-90).max(90).describe('Latitude in decimal degrees'),
       lon: z.number().min(-180).max(180).describe('Longitude in decimal degrees'),
+      days: z
+        .number()
+        .int()
+        .min(1)
+        .max(14)
+        .optional()
+        .describe('Number of forecast days to return (1–14). Defaults to ~10 if omitted.'),
     }),
   }
 );

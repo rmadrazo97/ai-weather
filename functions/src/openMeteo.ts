@@ -65,13 +65,16 @@ export function usAqiBand(aqi: number): string {
 // Forecast
 // ---------------------------------------------------------------------------
 
-export async function fetchForecast(lat: number, lon: number): Promise<any> {
+export async function fetchForecast(lat: number, lon: number, days = 10): Promise<any> {
+  const forecastDays = Math.min(Math.max(Math.round(days), 1), 14);
   const url =
     'https://api.open-meteo.com/v1/forecast' +
     `?latitude=${lat}&longitude=${lon}` +
     '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,is_day' +
     '&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=24' +
-    '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset,uv_index_max&forecast_days=7' +
+    '&daily=temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,' +
+    'precipitation_probability_max,weather_code,sunrise,sunset,uv_index_max,wind_speed_10m_max,relative_humidity_2m_mean' +
+    `&forecast_days=${forecastDays}` +
     '&timezone=auto';
   return getJson(url);
 }
@@ -108,14 +111,18 @@ export function formatForecast(data: any): string {
 
   const d = data.daily;
   if (d?.time?.length) {
-    lines.push('Next 7 days:');
+    const du = data.daily_units ?? {};
+    const dwUnit = du.wind_speed_10m_max ?? wUnit;
+    lines.push(`Next ${d.time.length} days (date: low–high, feels low–high, rain%, max wind, sky):`);
     for (let i = 0; i < d.time.length; i++) {
+      const humidity = d.relative_humidity_2m_mean?.[i];
       lines.push(
-        `  ${d.time[i]}: ${Math.round(d.temperature_2m_min[i])}–${Math.round(d.temperature_2m_max[i])}${tUnit}, ` +
-          `rain ${d.precipitation_probability_max[i]}%, ${wmoDescription(Number(d.weather_code[i]))}, ` +
-          `UV ${d.uv_index_max[i]}, sunrise ${String(d.sunrise[i]).slice(11, 16)}, sunset ${String(
-            d.sunset[i]
-          ).slice(11, 16)}`
+        `  ${d.time[i]}: ${Math.round(d.temperature_2m_min[i])}–${Math.round(d.temperature_2m_max[i])}${tUnit} ` +
+          `(feels ${Math.round(d.apparent_temperature_min[i])}–${Math.round(d.apparent_temperature_max[i])}${tUnit}), ` +
+          `rain ${d.precipitation_probability_max[i]}%, wind ${Math.round(d.wind_speed_10m_max[i])} ${dwUnit}, ` +
+          `${wmoDescription(Number(d.weather_code[i]))}, UV ${d.uv_index_max[i]}` +
+          (humidity != null ? `, humidity ${Math.round(humidity)}%` : '') +
+          `, sunrise ${String(d.sunrise[i]).slice(11, 16)}, sunset ${String(d.sunset[i]).slice(11, 16)}`
       );
     }
   }

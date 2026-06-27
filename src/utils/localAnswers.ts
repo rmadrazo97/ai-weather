@@ -4,9 +4,39 @@
 // already-loaded weather data.
 // ---------------------------------------------------------------------------
 
-import type { WeatherScenario, HourlyEntry } from '../data/weatherData';
+import type { WeatherScenario, HourlyEntry, DayTuple } from '../data/weatherData';
 
 const isRainy = (wx: WeatherScenario): boolean => wx.cond === 'rain' || wx.cond === 'storm';
+
+const DAY_NAMES = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+];
+
+// Words that signal the question is about a future day or a trip rather than
+// the here-and-now, so it should be answered from the multi-day forecast.
+const FUTURE_KEYWORDS = [
+  'week',
+  'tomorrow',
+  'next',
+  'forecast',
+  'trip',
+  'pack',
+  'bring',
+  'vacation',
+  'sweater',
+  'coat for',
+  'this weekend',
+  'next few days',
+  ...DAY_NAMES,
+];
+
+const isFutureIntent = (q: string): boolean => FUTURE_KEYWORDS.some((k) => q.includes(k));
 
 export function generateLocalResponse(
   question: string,
@@ -17,6 +47,48 @@ export function generateLocalResponse(
   const toUnit = (c: number) => (unit === 'F' ? Math.round((c * 9) / 5 + 32) : c);
   const tempDisplay = `${toUnit(wx.temp)}°${unit}`;
   const feelsDisplay = `${toUnit(wx.feels)}°${unit}`;
+
+  // -------------------------------------------------------------------------
+  // FUTURE / TRIP intent — answered from the multi-day forecast (wx.days) so a
+  // question like "should I bring a coat for my trip?" reads the whole horizon
+  // instead of just today's snapshot. Checked BEFORE the same-day branches.
+  // wx.days = DayTuple[] = [label, cond, lo, hi, popMax]; days[0] is today.
+  // -------------------------------------------------------------------------
+  if (isFutureIntent(q)) {
+    const days: DayTuple[] = wx.days ?? [];
+    if (days.length > 1) {
+      const minLow = Math.min(...days.map((d) => d[2]));
+      const maxHigh = Math.max(...days.map((d) => d[3]));
+      const maxPop = Math.max(...days.map((d) => d[4]));
+      const wetDays = days.filter((d) => d[4] >= 40).length;
+      const range = `${toUnit(minLow)}°–${toUnit(maxHigh)}°${unit}`;
+
+      // Layered-clothing advice keyed off the coldest expected temperature.
+      let clothing: string;
+      if (minLow < 5) {
+        clothing = `It gets cold — down to ${toUnit(minLow)}°${unit} — so pack a warm coat plus layers you can add or shed.`;
+      } else if (minLow < 12) {
+        clothing = `Bring layers: a sweater or light jacket for the cooler ${toUnit(minLow)}°${unit} stretches, with lighter clothes for the milder days up to ${toUnit(maxHigh)}°${unit}.`;
+      } else if (maxHigh >= 25) {
+        clothing = `It stays warm, up to ${toUnit(maxHigh)}°${unit}, so mostly light, breathable clothes — a thin layer for any cooler evenings is plenty.`;
+      } else {
+        clothing = `It's mild throughout, so a light jacket or long sleeves covers the range — no heavy coat needed.`;
+      }
+
+      // Rain advice keyed off the wettest day across the horizon.
+      let rain: string;
+      if (maxPop >= 60) {
+        rain = `Rain looks likely (up to a ${maxPop}% chance on ${wetDays} of the days), so pack a waterproof layer or umbrella.`;
+      } else if (maxPop >= 30) {
+        rain = `There's a moderate chance of showers (peaking around ${maxPop}%), so a packable rain jacket is worth tossing in.`;
+      } else {
+        rain = `Rain is unlikely (topping out near ${maxPop}%), so you can probably leave the heavy rain gear at home.`;
+      }
+
+      return `Looking at the full ${days.length}-day forecast for ${wx.location} — not just today — temperatures range from ${range}. ${clothing} ${rain}`;
+    }
+    // No multi-day data available — fall through to the same-day answers below.
+  }
 
   if (q.includes('umbrella')) {
     if (wx.cond === 'storm') {
