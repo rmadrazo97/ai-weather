@@ -14,20 +14,22 @@ import {
   Platform,
   Modal,
   ActivityIndicator,
-  ActionSheetIOS,
-  Alert,
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Swipeable } from 'react-native-gesture-handler';
+import ReorderableList, {
+  useReorderableDrag,
+  reorderItems,
+} from 'react-native-reorderable-list';
 import Svg, { Path, Rect, Line, Circle } from 'react-native-svg';
 import WeatherIcon from './WeatherIcon';
 import type { City } from '../data/weatherData';
-import { PRESET_CITIES } from '../data/weatherData';
 import { searchCities } from '../data/weatherApi';
 import type { CityCurrent } from '../data/weatherApi';
 import type { MyLocationState } from '../hooks/useMyLocation';
 import { fmtTemp } from '../utils/helpers';
-import { tapHaptic } from '../utils/haptics';
+import { tapHaptic, selectHaptic } from '../utils/haptics';
 import { INK, MUTED, FAINT, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
@@ -73,15 +75,111 @@ const PinIcon: React.FC<{ size?: number; color?: string }> = ({ size = 22, color
 interface CitySheetProps {
   visible: boolean;
   activeCityId: string;
-  customCities: City[];
+  cities: City[];
   cityWx: Record<string, CityCurrent | undefined>;
   unit: 'C' | 'F';
   myLocation: MyLocationState;
   onSelect: (city: City) => void;
   onAdd: (city: City) => void;
   onRemove: (id: string) => void;
+  onReorder: (next: City[]) => void;
   onClose: () => void;
 }
+
+// ---------------------------------------------------------------------------
+// Draggable city row
+//
+// Lives inside the ReorderableList so it can call `useReorderableDrag`. Tap
+// selects the city; a long-press starts a drag-to-reorder (with a selection
+// haptic); swiping left reveals a red Delete action. The old long-press
+// ActionSheet is gone — long-press now means "drag", swipe means "delete".
+// ---------------------------------------------------------------------------
+
+interface DraggableCityRowProps {
+  city: City;
+  isActive: boolean;
+  cur: CityCurrent | undefined;
+  unit: 'C' | 'F';
+  onSelect: (city: City) => void;
+  onRemove: (id: string) => void;
+}
+
+const DraggableCityRow: React.FC<DraggableCityRowProps> = ({
+  city,
+  isActive,
+  cur,
+  unit,
+  onSelect,
+  onRemove,
+}) => {
+  const drag = useReorderableDrag();
+  const swipeRef = useRef<React.ComponentRef<typeof Swipeable>>(null);
+
+  const a11yLabel = cur
+    ? `${city.name}, ${fmtTemp(cur.temp, unit)} degrees, ${cur.label.toLowerCase()}`
+    : city.name;
+
+  const handleDelete = () => {
+    tapHaptic();
+    swipeRef.current?.close();
+    onRemove(city.id);
+  };
+
+  const renderRightActions = () => (
+    <TouchableOpacity
+      style={styles.deleteAction}
+      onPress={handleDelete}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`Delete ${city.name} from cities`}
+    >
+      <Text style={styles.deleteActionText}>Delete</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <Swipeable
+      ref={swipeRef}
+      renderRightActions={renderRightActions}
+      overshootRight={false}
+      rightThreshold={40}
+      childrenContainerStyle={styles.cityRowSolid}
+    >
+      <Pressable
+        style={({ pressed }) => [
+          styles.cityRow,
+          isActive && styles.cityRowActive,
+          pressed && styles.cityRowPressed,
+        ]}
+        onPress={() => onSelect(city)}
+        onLongPress={() => {
+          selectHaptic();
+          drag();
+        }}
+        delayLongPress={250}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint="Long press to reorder, swipe left to delete"
+        accessibilityState={{ selected: isActive }}
+      >
+        <View style={styles.cityLeft}>
+          <WeatherIcon cond={cur?.cond ?? 'cloud'} size={34} stroke={cur ? INK : FAINT} />
+          <View style={styles.cityInfo}>
+            <Text style={styles.cityName}>{city.name}</Text>
+            <Text style={styles.citySub}>
+              {cur
+                ? `${cur.label} · Humidity ${cur.humidity}%`
+                : [city.admin1, city.country].filter(Boolean).join(' · ') || '—'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.cityRight}>
+          <Text style={styles.cityTemp}>{cur ? `${fmtTemp(cur.temp, unit)}°` : '—'}</Text>
+        </View>
+      </Pressable>
+    </Swipeable>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // CitySheet component
@@ -90,13 +188,14 @@ interface CitySheetProps {
 const CitySheet: React.FC<CitySheetProps> = ({
   visible,
   activeCityId,
-  customCities,
+  cities,
   cityWx,
   unit,
   myLocation,
   onSelect,
   onAdd,
   onRemove,
+  onReorder,
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
@@ -299,7 +398,6 @@ const CitySheet: React.FC<CitySheetProps> = ({
     }
   }, [visible]);
 
-  const allCities: City[] = [...PRESET_CITIES, ...customCities];
   const isSearchMode = query.trim().length >= 2;
 
   // ---- My Location row content ----
@@ -331,96 +429,42 @@ const CitySheet: React.FC<CitySheetProps> = ({
     if (located) onSelect(located);
   };
 
-  // Long-press menu for a saved city row: jump to it or (for custom cities)
-  // remove it. Tap still selects; this is the secondary, deliberate action.
-  const openCityActions = (city: City) => {
-    tapHaptic();
-    if (Platform.OS === 'ios') {
-      const options = ['Set as active location'];
-      let destructiveButtonIndex: number | undefined;
-      if (city.custom) {
-        options.push('Remove from list');
-        destructiveButtonIndex = options.length - 1;
+  // Pinned My Location row — rendered as the ReorderableList header so it stays
+  // at the top and is never draggable or deletable.
+  const myLocationRow = (
+    <TouchableOpacity
+      style={[styles.cityRow, locCity && locCity.id === activeCityId && styles.cityRowActive]}
+      onPress={handleMyLocationPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={
+        locCity && locWx
+          ? `My location, ${locName}, ${fmtTemp(locWx.temp, unit)} degrees, ${locWx.label.toLowerCase()}`
+          : `My location. ${locSub}`
       }
-      options.push('Cancel');
-      const cancelButtonIndex = options.length - 1;
-
-      ActionSheetIOS.showActionSheetWithOptions(
-        { title: city.name, options, cancelButtonIndex, destructiveButtonIndex },
-        (buttonIndex) => {
-          if (buttonIndex === 0) {
-            onSelect(city);
-          } else if (city.custom && buttonIndex === 1) {
-            onRemove(city.id);
-          }
-        },
-      );
-      return;
-    }
-
-    // Android (and any non-iOS): native ActionSheetIOS isn't available, so use Alert.
-    const buttons: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [
-      { text: 'Set as active location', onPress: () => onSelect(city) },
-    ];
-    if (city.custom) {
-      buttons.push({ text: 'Remove from list', style: 'destructive', onPress: () => onRemove(city.id) });
-    }
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert(city.name, undefined, buttons);
-  };
-
-  const renderCityRow = (city: City) => {
-    const isActive = city.id === activeCityId;
-    const cur = cityWx[city.id];
-    const a11yLabel = cur
-      ? `${city.name}, ${fmtTemp(cur.temp, unit)} degrees, ${cur.label.toLowerCase()}`
-      : city.name;
-    return (
-      <Pressable
-        key={city.id}
-        style={({ pressed }) => [
-          styles.cityRow,
-          isActive && styles.cityRowActive,
-          pressed && styles.cityRowPressed,
-        ]}
-        onPress={() => onSelect(city)}
-        onLongPress={() => openCityActions(city)}
-        delayLongPress={250}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint="Long press for more options"
-        accessibilityState={{ selected: isActive }}
-      >
-        <View style={styles.cityLeft}>
-          <WeatherIcon cond={cur?.cond ?? 'cloud'} size={34} stroke={cur ? INK : FAINT} />
-          <View style={styles.cityInfo}>
-            <Text style={styles.cityName}>{city.name}</Text>
-            <Text style={styles.citySub}>
-              {cur
-                ? `${cur.label} · Humidity ${cur.humidity}%`
-                : [city.admin1, city.country].filter(Boolean).join(' · ') || '—'}
-            </Text>
+    >
+      <View style={styles.cityLeft}>
+        {locWx ? (
+          <WeatherIcon cond={locWx.cond} size={34} stroke={INK} />
+        ) : (
+          <View style={styles.locIconWrap}>
+            <PinIcon size={24} color={INK} />
           </View>
+        )}
+        <View style={styles.cityInfo}>
+          <Text style={styles.cityName}>{locName}</Text>
+          <Text style={styles.citySub}>{locSub}</Text>
         </View>
-        <View style={styles.cityRight}>
-          <Text style={styles.cityTemp}>
-            {cur ? `${fmtTemp(cur.temp, unit)}°` : '—'}
-          </Text>
-          {city.custom && (
-            <TouchableOpacity
-              style={styles.removeBtn}
-              onPress={() => onRemove(city.id)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${city.name} from cities`}
-            >
-              <Text style={styles.removeBtnText}>{'✕'}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </Pressable>
-    );
-  };
+      </View>
+      <View style={styles.cityRight}>
+        {myLocation.status === 'loading' ? (
+          <ActivityIndicator size="small" color={MUTED} />
+        ) : (
+          <Text style={styles.cityTemp}>{locWx ? `${fmtTemp(locWx.temp, unit)}°` : '—'}</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
 
   const renderResultRow = (city: City) => (
     <TouchableOpacity
@@ -491,71 +535,46 @@ const CitySheet: React.FC<CitySheetProps> = ({
         <View style={styles.divider} />
 
         {/* City list / search results */}
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {isSearchMode ? (
-            <>
-              {searching && (
-                <View style={styles.statusRow}>
-                  <ActivityIndicator size="small" color={MUTED} />
-                  <Text style={styles.statusText}>Searching…</Text>
-                </View>
-              )}
-              {!searching && results && results.length === 0 && (
-                <View style={styles.statusRow}>
-                  <Text style={styles.statusText}>No matches</Text>
-                </View>
-              )}
-              {results?.map(renderResultRow)}
-            </>
-          ) : (
-            <>
-              {/* Pinned: My Location */}
-              <TouchableOpacity
-                style={[
-                  styles.cityRow,
-                  locCity && locCity.id === activeCityId && styles.cityRowActive,
-                ]}
-                onPress={handleMyLocationPress}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  locCity && locWx
-                    ? `My location, ${locName}, ${fmtTemp(locWx.temp, unit)} degrees, ${locWx.label.toLowerCase()}`
-                    : `My location. ${locSub}`
-                }
-              >
-                <View style={styles.cityLeft}>
-                  {locWx ? (
-                    <WeatherIcon cond={locWx.cond} size={34} stroke={INK} />
-                  ) : (
-                    <View style={styles.locIconWrap}>
-                      <PinIcon size={24} color={INK} />
-                    </View>
-                  )}
-                  <View style={styles.cityInfo}>
-                    <Text style={styles.cityName}>{locName}</Text>
-                    <Text style={styles.citySub}>{locSub}</Text>
-                  </View>
-                </View>
-                <View style={styles.cityRight}>
-                  {myLocation.status === 'loading' ? (
-                    <ActivityIndicator size="small" color={MUTED} />
-                  ) : (
-                    <Text style={styles.cityTemp}>
-                      {locWx ? `${fmtTemp(locWx.temp, unit)}°` : '—'}
-                    </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-
-              {allCities.map(renderCityRow)}
-            </>
-          )}
-        </ScrollView>
+        {isSearchMode ? (
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {searching && (
+              <View style={styles.statusRow}>
+                <ActivityIndicator size="small" color={MUTED} />
+                <Text style={styles.statusText}>Searching…</Text>
+              </View>
+            )}
+            {!searching && results && results.length === 0 && (
+              <View style={styles.statusRow}>
+                <Text style={styles.statusText}>No matches</Text>
+              </View>
+            )}
+            {results?.map(renderResultRow)}
+          </ScrollView>
+        ) : (
+          <ReorderableList
+            style={styles.flex}
+            contentContainerStyle={styles.listContent}
+            data={cities}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={myLocationRow}
+            keyboardShouldPersistTaps="handled"
+            onReorder={({ from, to }) => onReorder(reorderItems(cities, from, to))}
+            renderItem={({ item }) => (
+              <DraggableCityRow
+                city={item}
+                isActive={item.id === activeCityId}
+                cur={cityWx[item.id]}
+                unit={unit}
+                onSelect={onSelect}
+                onRemove={onRemove}
+              />
+            )}
+          />
+        )}
 
         {/* Search / add input */}
         <View style={styles.addBar}>
@@ -685,6 +704,12 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
 
+  // Opaque base behind each swipeable row so the red Delete action stays
+  // hidden until the user actually swipes the row open.
+  cityRowSolid: {
+    backgroundColor: '#fff',
+  },
+
   cityRowActive: {
     backgroundColor: 'rgba(21,19,26,0.04)',
   },
@@ -729,19 +754,21 @@ const styles = StyleSheet.create({
     color: INK,
   },
 
-  removeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: HAIR,
-    alignItems: 'center',
+  deleteAction: {
+    backgroundColor: '#ff3b30',
     justifyContent: 'center',
+    alignItems: 'center',
+    width: 92,
+    marginBottom: 4,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+    paddingHorizontal: 16,
   },
 
-  removeBtnText: {
-    fontSize: 12,
-    color: MUTED,
-    fontWeight: '600',
+  deleteActionText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 
   locIconWrap: {

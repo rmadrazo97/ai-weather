@@ -13,6 +13,7 @@ import {
   AppState,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import HeroScreen from './src/components/HeroScreen';
@@ -75,10 +76,25 @@ async function migrateCityName(name: string): Promise<City | null> {
 }
 
 function AppInner() {
-  // Persisted state (v2 keys hold full City objects with coordinates)
-  const [customCities, setCustomCities, citiesHydrated] = useStorage<City[]>(
+  // ---------------------------------------------------------------------
+  // City model (v3): ONE ordered, user-managed list `cities`. My Location is a
+  // separate pinned pseudo-city (never in `cities`). PRESET_CITIES survives only
+  // as the v3 migration seed + the ultimate fallback.
+  //
+  // `customCities` (v2) is kept solely as the migration source: it is folded
+  // into `cities` once, then its storage key is cleared.
+  // ---------------------------------------------------------------------
+  const [customCities, setCustomCities, customCitiesHydrated] = useStorage<City[]>(
     'wxai.cities.v2',
     []
+  );
+  const [cities, setCities, citiesHydrated] = useStorage<City[]>(
+    'wxai.cities.v3',
+    []
+  );
+  const [migratedV3, setMigratedV3, migratedV3Hydrated] = useStorage<boolean>(
+    'wxai.cities.migrated.v3',
+    false
   );
   const [activeCity, setActiveCity, activeHydrated] = useStorage<City | null>(
     'wxai.activeCity.v2',
@@ -121,8 +137,9 @@ function AppInner() {
   const unitRef = useRef(unit);
   unitRef.current = unit;
 
-  // Resolve current city
-  const city = activeCity ?? PRESET_CITIES[0];
+  // Resolve current city. `cities` may briefly be empty before the v3 migration
+  // has populated it, so fall through to PRESET_CITIES[0].
+  const city = activeCity ?? cities[0] ?? PRESET_CITIES[0];
 
   // Mirror the active city into a ref so the AppState foreground listener can
   // refresh the right city without re-subscribing on every city change.
@@ -133,7 +150,7 @@ function AppInner() {
   // One-time migration of v1 storage (names only) → v2 (full City objects)
   // ---------------------------------------------------------------------
   useEffect(() => {
-    if (!citiesHydrated || !activeHydrated || migrationDone) return;
+    if (!customCitiesHydrated || !activeHydrated || migrationDone) return;
     let cancelled = false;
     (async () => {
       try {
@@ -178,7 +195,39 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [citiesHydrated, activeHydrated, migrationDone, setCustomCities, setActiveCity]);
+  }, [customCitiesHydrated, activeHydrated, migrationDone, setCustomCities, setActiveCity]);
+
+  // ---------------------------------------------------------------------
+  // One-time migration to the v3 city model: collapse the old fixed
+  // PRESET_CITIES + separate customCities into a single ordered `cities` array
+  // (presets first, then any user-added cities, de-duplicated by id). Gated on
+  // the persisted `migratedV3` flag and on the v1→v2 migration having finished
+  // so `customCities` is final. Best-effort clears the now-dead v2 key.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    if (!customCitiesHydrated || !citiesHydrated || !migratedV3Hydrated) return;
+    if (!migrationDone || migratedV3) return;
+
+    const seen = new Set<string>();
+    const merged: City[] = [];
+    for (const c of [...PRESET_CITIES, ...customCities]) {
+      if (!c || seen.has(c.id)) continue;
+      seen.add(c.id);
+      merged.push(c);
+    }
+    setCities(merged);
+    setMigratedV3(true);
+    AsyncStorage.removeItem('wxai.cities.v2').catch(() => {});
+  }, [
+    customCitiesHydrated,
+    citiesHydrated,
+    migratedV3Hydrated,
+    migrationDone,
+    migratedV3,
+    customCities,
+    setCities,
+    setMigratedV3,
+  ]);
 
   // ---------------------------------------------------------------------
   // Weather loading with offline cache fallback
@@ -265,8 +314,7 @@ function AppInner() {
     if (Date.now() - cityWxStore.ts < CITY_WX_STALE_MS) return;
     const list: City[] = [
       ...(myLocation.city ? [myLocation.city] : []),
-      ...PRESET_CITIES,
-      ...customCities,
+      ...cities,
     ];
     let cancelled = false;
     fetchCitiesCurrent(list)
@@ -297,28 +345,36 @@ function AppInner() {
 
   const addCity = useCallback(
     (c: City) => {
-      const existing = [...PRESET_CITIES, ...customCities].find(
-        (x) => x.id === c.id
-      );
+      const existing = cities.find((x) => x.id === c.id);
       if (existing) {
         selectCity(existing);
         return;
       }
       const newCity: City = { ...c, custom: true };
-      setCustomCities([...customCities, newCity]);
+      setCities([...cities, newCity]);
       selectCity(newCity);
     },
-    [customCities, setCustomCities, selectCity]
+    [cities, setCities, selectCity]
   );
 
   const removeCity = useCallback(
     (id: string) => {
-      setCustomCities(customCities.filter((c) => c.id !== id));
-      // Prune the removed custom city's widget snapshot + index entry.
+      const next = cities.filter((c) => c.id !== id);
+      setCities(next);
+      // Prune the removed city's widget snapshot + index entry.
       removeCitySnapshot(id);
-      if (city.id === id) selectCity(PRESET_CITIES[0]);
+      if (city.id === id) {
+        setActiveCity(next[0] ?? myLocation.city ?? PRESET_CITIES[0]);
+      }
     },
-    [customCities, setCustomCities, city.id, selectCity]
+    [cities, setCities, city.id, setActiveCity, myLocation.city]
+  );
+
+  const reorderCities = useCallback(
+    (next: City[]) => {
+      setCities(next);
+    },
+    [setCities]
   );
 
   // Persist the unit (wxai.unit) and mirror it into the App Group's shared
@@ -336,12 +392,16 @@ function AppInner() {
   // Widget deep linking — aiweather://city/<cityId> (PRD 06a)
   //
   // Resolve the (percent-decoded) cityId against the composite city list
-  // [myLocation, ...PRESET_CITIES, ...customCities] and set it active. Links
-  // arriving before hydration (cities + active + migration) are buffered in a
-  // ref and applied once ready; unknown/malformed ids no-op to the active city.
+  // [myLocation, ...cities] and set it active. Links arriving before hydration
+  // (cities + active + migration) are buffered in a ref and applied once ready;
+  // unknown/malformed ids no-op to the active city.
   // ---------------------------------------------------------------------
   const linkReady =
-    citiesHydrated && activeHydrated && migrationDone;
+    citiesHydrated &&
+    migratedV3Hydrated &&
+    activeHydrated &&
+    migrationDone &&
+    migratedV3;
   const pendingLinkRef = useRef<string | null>(null);
   const linkReadyRef = useRef(linkReady);
   linkReadyRef.current = linkReady;
@@ -350,12 +410,11 @@ function AppInner() {
     (id: string): City | null => {
       const list: City[] = [
         ...(myLocation.city ? [myLocation.city] : []),
-        ...PRESET_CITIES,
-        ...customCities,
+        ...cities,
       ];
       return list.find((c) => c.id === id) ?? null;
     },
-    [myLocation.city, customCities]
+    [myLocation.city, cities]
   );
 
   const applyDeepLink = useCallback(
@@ -526,13 +585,14 @@ function AppInner() {
             <CitySheet
               visible={citiesOpen}
               activeCityId={city.id}
-              customCities={customCities}
+              cities={cities}
               cityWx={cityWxStore.data}
               unit={unit}
               myLocation={myLocation}
               onSelect={selectCity}
               onAdd={addCity}
               onRemove={removeCity}
+              onReorder={reorderCities}
               onClose={() => setCitiesOpen(false)}
             />
             <HourlyExpandedSheet
@@ -550,9 +610,11 @@ function AppInner() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <AppInner />
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <AppInner />
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
 
