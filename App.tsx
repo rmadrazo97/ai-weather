@@ -37,6 +37,8 @@ import { GRADIENTS, INK, MUTED } from './src/utils/colors';
 import { useStorage } from './src/hooks/useStorage';
 import { useMyLocation } from './src/hooks/useMyLocation';
 import { deriveEvents, ensurePermission, schedule } from './src/notifications';
+import * as QuickActions from 'expo-quick-actions';
+import { useQuickActionCallback } from 'expo-quick-actions/hooks';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -413,6 +415,23 @@ function AppInner() {
       applyDeepLink(pending);
     }
   }, [linkReady, applyDeepLink]);
+
+  // Home Screen quick actions (long-press the app icon). Registered once;
+  // handled via the callback below (also fires for the launching action).
+  useEffect(() => {
+    QuickActions.setItems([
+      { id: 'chat', title: 'Ask AI', icon: 'symbol:sparkles', params: { href: 'aiweather://chat' } },
+      { id: 'mylocation', title: 'My Location', icon: 'location' },
+    ]).catch(() => {});
+  }, []);
+  useQuickActionCallback((action) => {
+    if (action.id === 'chat') {
+      setChatOpen(true);
+    } else if (action.id === 'mylocation') {
+      if (myLocation.city) setActiveCity(myLocation.city);
+      else setCitiesOpen(true);
+    }
+  });
 
   // Scroll to details
   const showDetails = useCallback(() => {

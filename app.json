@@ -2,7 +2,7 @@
   "expo": {
     "name": "AI Weather",
     "slug": "ai-weather",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "scheme": "aiweather",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -57,7 +57,9 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200
         }
-      ]
+      ],
+      "expo-notifications",
+      "expo-quick-actions"
     ],
     "extra": {
       "eas": {
