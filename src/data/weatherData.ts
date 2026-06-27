@@ -36,6 +36,22 @@ export interface DaySeriesEntry {
   pop: number;
   isNow: boolean;
   isPast: boolean;
+  /** Relative humidity (%). */
+  humidity: number;
+  /** Surface pressure (hPa). */
+  pressure: number;
+  /** Wind speed (km/h). */
+  wind: number;
+  /** Dew point (°C, integer). */
+  dew: number;
+  /** UV index. */
+  uv: number;
+  /** Visibility (km). */
+  visibility: number;
+  /** Cloud cover (%). */
+  cloud: number;
+  /** US AQI for this hour, when available. */
+  aqi: number | undefined;
 }
 
 export interface WeatherScenario {

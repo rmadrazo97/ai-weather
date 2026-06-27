@@ -88,13 +88,13 @@ export async function fetchWeather(
   const forecastUrl =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,cloud_cover,is_day` +
-    `&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,is_day,visibility,dew_point_2m` +
+    `&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,is_day,visibility,dew_point_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,uv_index,cloud_cover` +
     `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,sunrise,sunset,uv_index_max` +
     `&forecast_days=10&timezone=auto`;
 
   const aqiUrl =
     `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}` +
-    `&current=us_aqi`;
+    `&current=us_aqi&hourly=us_aqi&forecast_days=1&timezone=auto`;
 
   // AQI failure must never fail the weather fetch.
   const [wxResult, aqiResult] = await Promise.allSettled([
@@ -108,17 +108,20 @@ export async function fetchWeather(
   const data = await res.json();
 
   let aqi: number | undefined;
+  let aqiHourly: number[] | undefined;
   if (aqiResult.status === 'fulfilled' && aqiResult.value.ok) {
     try {
       const aqiData = await aqiResult.value.json();
       const v = aqiData?.current?.us_aqi;
       if (typeof v === 'number') aqi = Math.round(v);
+      const series = aqiData?.hourly?.us_aqi;
+      if (Array.isArray(series)) aqiHourly = series as number[];
     } catch {
       // ignore — AQI is optional
     }
   }
 
-  return buildScenario(data, displayName, aqi);
+  return buildScenario(data, displayName, aqi, aqiHourly);
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +247,8 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function buildScenario(
   data: any,
   displayName: string,
-  aqi: number | undefined
+  aqi: number | undefined,
+  aqiHourly?: number[]
 ): WeatherScenario {
   const current = data.current;
   const hourly = data.hourly;
@@ -301,15 +305,32 @@ function buildScenario(
   for (let i = 0; i < 24 && i < hourly.time.length; i++) {
     const hIsDay = hourly.is_day[i] === 1;
     const info = wmoInfo(hourly.weather_code[i], hIsDay);
+    const hTemp = Math.round(hourly.temperature_2m[i]);
+    const hHumidity = hourly.relative_humidity_2m?.[i];
+    const hPressure = hourly.surface_pressure?.[i];
+    const hWind = hourly.wind_speed_10m?.[i];
+    const hDew = hourly.dew_point_2m?.[i];
+    const hUv = hourly.uv_index?.[i];
+    const hVis = hourly.visibility?.[i];
+    const hCloud = hourly.cloud_cover?.[i];
+    const hAqi = aqiHourly?.[i];
     daySeries.push({
       hour: i,
       label: hourLabel(i),
-      temp: Math.round(hourly.temperature_2m[i]),
+      temp: hTemp,
       feels: Math.round(hourly.apparent_temperature[i]),
       cond: info.cond,
       pop: Math.round(hourly.precipitation_probability[i] ?? 0),
       isNow: i === nowHour,
       isPast: i < nowHour,
+      humidity: typeof hHumidity === 'number' ? Math.round(hHumidity) : humidity,
+      pressure: typeof hPressure === 'number' ? Math.round(hPressure) : pressure,
+      wind: typeof hWind === 'number' ? Math.round(hWind) : wind,
+      dew: typeof hDew === 'number' ? Math.round(hDew) : hTemp,
+      uv: typeof hUv === 'number' ? Math.round(hUv) : 0,
+      visibility: typeof hVis === 'number' ? Math.round(hVis / 1000) : 10,
+      cloud: typeof hCloud === 'number' ? Math.round(hCloud) : 0,
+      aqi: typeof hAqi === 'number' ? Math.round(hAqi) : undefined,
     });
   }
 

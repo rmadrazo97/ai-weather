@@ -5,8 +5,6 @@ import {
   StyleSheet,
   Animated,
   Platform,
-  Pressable,
-  Modal,
 } from 'react-native';
 import Svg, {
   Path,
@@ -21,12 +19,13 @@ import Svg, {
 } from 'react-native-svg';
 import WeatherIcon from './WeatherIcon';
 import MetricTile from './MetricTile';
-import MetricIcon from './MetricIcon';
+import MetricTimelineSheet from './MetricTimelineSheet';
 import HourlyForecastCard from './HourlyForecastCard';
 import HighlightCard from './HighlightCard';
 import { fmtTemp } from '../utils/helpers';
-import { tapHaptic } from '../utils/haptics';
-import { INK, MUTED, FAINT, HAIR, RAIN_BLUE, TILE } from '../utils/colors';
+import { INK, MUTED, FAINT, HAIR, RAIN_BLUE } from '../utils/colors';
+import { METRICS } from '../data/metrics';
+import type { MetricDef } from '../data/metrics';
 import type { WeatherScenario, DayTuple } from '../data/weatherData';
 
 // ---------------------------------------------------------------------------
@@ -139,24 +138,12 @@ interface DetailsViewProps {
 // Component
 // ---------------------------------------------------------------------------
 
-interface MetricInfo {
-  label: string;
-  value: string;
-  explain: string;
-}
-
 const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
   const isNight = wx.isNight;
   const sunPct = wx.sunPct as number;
 
-  // Long-press explainer modal: null when closed, populated with the tapped
-  // metric's name, value and a one-sentence plain-language note when open.
-  const [metricInfo, setMetricInfo] = useState<MetricInfo | null>(null);
-
-  const openMetric = (info: MetricInfo) => {
-    tapHaptic();
-    setMetricInfo(info);
-  };
+  // Tapped metric → opens its 24h timeline sheet; null when closed.
+  const [activeMetric, setActiveMetric] = useState<MetricDef | null>(null);
 
   // Sun arc geometry
   const P0: [number, number] = [18, 118];
@@ -184,97 +171,6 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
   // Precip bars max
   const precipBars = (wx.hourly as any[]).slice(0, 8);
   const maxPop = Math.max(...precipBars.map((h: any) => h.pop), 10);
-
-  // Conditions grid — data-driven so each tile gets a long-press explainer.
-  // `detail` is the value shown in the modal; `explain` is a plain-language note.
-  const conditionTiles: Array<{
-    key: string;
-    icon: React.ReactNode;
-    label: string;
-    value: string | number;
-    unit?: string;
-    subtitle?: string;
-    bg: string;
-    detail: string;
-    explain: string;
-  }> = [
-    {
-      key: 'humidity',
-      icon: <MetricIcon name="humidity" />,
-      label: 'Humidity',
-      value: wx.humidity,
-      unit: '%',
-      bg: TILE.humidity,
-      detail: `${wx.humidity}%`,
-      explain:
-        'Share of moisture in the air — higher values feel muggier and slow how fast sweat evaporates to cool you.',
-    },
-    {
-      key: 'pressure',
-      icon: <MetricIcon name="pressure" />,
-      label: 'Pressure',
-      value: wx.pressure,
-      unit: 'hPa',
-      bg: TILE.pressure,
-      detail: `${wx.pressure} hPa`,
-      explain:
-        'Air pressure at the surface — falling pressure often brings storms, while rising pressure points to clearer skies.',
-    },
-    {
-      key: 'dew',
-      icon: <MetricIcon name="dew" />,
-      label: 'Dew Point',
-      value: `${fmtTemp(wx.dew, unit)}°`,
-      bg: TILE.dew,
-      detail: `${fmtTemp(wx.dew, unit)}°`,
-      explain:
-        'The temperature at which air becomes saturated — the higher it is, the stickier and more humid it feels.',
-    },
-    {
-      key: 'wind',
-      icon: <MetricIcon name="wind" />,
-      label: 'Wind',
-      value: wx.wind,
-      unit: 'km/h',
-      bg: TILE.wind,
-      detail: `${wx.wind} km/h`,
-      explain:
-        'Current wind speed — stronger wind makes it feel colder and can make outdoor plans harder.',
-    },
-    {
-      key: 'aqi',
-      icon: <MetricIcon name="aqi" />,
-      label: 'Air Quality',
-      value: wx.aqi ?? '—',
-      subtitle: wx.aqiWord,
-      bg: TILE.aqi,
-      detail: `${wx.aqi ?? '—'}${wx.aqiWord ? ` (${wx.aqiWord})` : ''}`,
-      explain:
-        'Air Quality Index — lower is cleaner; as it climbs, sensitive groups should limit time outdoors.',
-    },
-    {
-      key: 'uv',
-      icon: <MetricIcon name="uv" />,
-      label: 'UV',
-      value: wx.uv,
-      subtitle: wx.uvWord,
-      bg: TILE.uv,
-      detail: `${wx.uv}${wx.uvWord ? ` (${wx.uvWord})` : ''}`,
-      explain:
-        'Strength of the sun’s ultraviolet rays, strongest midday — wear sunscreen and limit exposure when it is high.',
-    },
-    {
-      key: 'vis',
-      icon: <MetricIcon name="vis" />,
-      label: 'Visibility',
-      value: wx.vis,
-      unit: 'km',
-      bg: TILE.vis,
-      detail: `${wx.vis} km`,
-      explain:
-        'How far you can clearly see — cut down by fog, haze, or heavy rain.',
-    },
-  ];
 
   let sIdx = 0;
 
@@ -499,30 +395,15 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
         <Text style={styles.label}>CONDITIONS</Text>
 
         <View style={styles.tileGrid}>
-          {conditionTiles.map((tile) => (
-            <Pressable
-              key={tile.key}
-              style={styles.tileCell}
-              delayLongPress={250}
-              onLongPress={() =>
-                openMetric({
-                  label: tile.label,
-                  value: tile.detail,
-                  explain: tile.explain,
-                })
-              }
-              accessibilityRole="button"
-              accessibilityHint="Long press for a plain-language explanation"
-            >
+          {METRICS.map((metric) => (
+            <View key={metric.key} style={styles.tileCell}>
               <MetricTile
-                icon={tile.icon}
-                label={tile.label}
-                value={tile.value}
-                unit={tile.unit}
-                subtitle={tile.subtitle}
-                bg={tile.bg}
+                metric={metric}
+                wx={wx}
+                unit={unit}
+                onPress={() => setActiveMetric(metric)}
               />
-            </Pressable>
+            </View>
           ))}
         </View>
       </Section>
@@ -552,42 +433,15 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
       </Section>
 
       {/* ================================================================= */}
-      {/* Metric explainer (long-press a conditions tile)                   */}
+      {/* Metric timeline (tap a conditions tile)                           */}
       {/* ================================================================= */}
-      <Modal
-        visible={metricInfo !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMetricInfo(null)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setMetricInfo(null)}
-          accessibilityRole="button"
-          accessibilityLabel="Close explanation"
-        >
-          {/* Inner press swallows taps so they don't dismiss the sheet. */}
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            {metricInfo && (
-              <>
-                <Text style={styles.modalLabel}>
-                  {metricInfo.label.toUpperCase()}
-                </Text>
-                <Text style={styles.modalValue}>{metricInfo.value}</Text>
-                <Text style={styles.modalExplain}>{metricInfo.explain}</Text>
-                <Pressable
-                  style={styles.modalClose}
-                  onPress={() => setMetricInfo(null)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss explanation"
-                >
-                  <Text style={styles.modalCloseText}>Got it</Text>
-                </Pressable>
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <MetricTimelineSheet
+        metric={activeMetric}
+        wx={wx}
+        unit={unit}
+        visible={!!activeMetric}
+        onClose={() => setActiveMetric(null)}
+      />
     </View>
   );
 };
@@ -780,59 +634,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT,
     fontSize: 11,
     color: FAINT,
-  },
-
-  // Metric explainer modal
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(21,19,26,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 22,
-    paddingBottom: 18,
-  },
-  modalLabel: {
-    fontFamily: FONT,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 1.2,
-    color: FAINT,
-    marginBottom: 8,
-  },
-  modalValue: {
-    fontFamily: FONT,
-    fontSize: 30,
-    fontWeight: '700',
-    color: INK,
-    marginBottom: 10,
-  },
-  modalExplain: {
-    fontFamily: FONT,
-    fontSize: 15,
-    lineHeight: 21,
-    color: MUTED,
-  },
-  modalClose: {
-    alignSelf: 'flex-end',
-    marginTop: 18,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: INK,
-  },
-  modalCloseText: {
-    fontFamily: FONT,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
   },
 });
 

@@ -8,7 +8,8 @@ export type MetricName =
   | 'wind'
   | 'aqi'
   | 'uv'
-  | 'vis';
+  | 'vis'
+  | 'cloud';
 
 interface MetricIconProps {
   name: MetricName;
@@ -124,6 +125,15 @@ const MetricIcon: React.FC<MetricIconProps> = ({
             <Circle cx={50} cy={50} r={10} {...common} />
             <Circle cx={50} cy={50} r={3} fill={color} />
           </>
+        );
+
+      // Cloud
+      case 'cloud':
+        return (
+          <Path
+            d="M32 68 C20 68 16 52 30 50 C30 36 50 32 56 44 C62 34 80 38 78 52 C90 52 88 68 74 68 Z"
+            {...common}
+          />
         );
 
       default:

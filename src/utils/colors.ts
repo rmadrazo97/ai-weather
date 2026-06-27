@@ -4,6 +4,19 @@ export const FAINT = 'rgba(21,19,26,0.34)';
 export const HAIR = 'rgba(21,19,26,0.14)';
 export const RAIN_BLUE = '#3f6fb0';
 
+// Frosted-glass tokens for translucent cards layered over the app gradient.
+// Light, airy look with dark (INK) text on top of an expo-blur BlurView.
+export const GLASS = {
+  /** Translucent white overlay painted over the blur for a lighter frost. */
+  bg: 'rgba(255,255,255,0.42)',
+  /** Hairline rim that catches light along the card edge. */
+  border: 'rgba(255,255,255,0.6)',
+  /** Glossy top highlight (top → fade). */
+  gloss: 'rgba(255,255,255,0.35)',
+  /** Soft drop shadow color. */
+  shadow: '#1c2540',
+} as const;
+
 // Solid background colors for metric tiles (white foreground text).
 // Each tone is tuned for WCAG AA contrast against '#fff'.
 export const TILE = {
