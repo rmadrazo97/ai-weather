@@ -433,6 +433,13 @@ export default function HeroScreen({
       {/* ---- Hourly graph ---- */}
       <HourlyGraph wx={wx} unit={unit} onExpand={onExpandHourly} />
 
+      {/* ---- Footer ---- */}
+      <View style={styles.footerDivider} />
+      <View style={styles.footerRow}>
+        <Text style={styles.footerLabel}>Be prepared for the weather</Text>
+        <Text style={styles.footerTime}>{liveTime}</Text>
+      </View>
+
       {/* ---- Chevron down ---- */}
       <View style={styles.chevronWrap}>
         <ChevronDown onPress={onShowDetails} />
@@ -669,6 +676,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: FAINT,
     marginTop: 2,
+  },
+
+  // ---- Footer ----
+  footerDivider: {
+    height: 1,
+    backgroundColor: HAIR,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  footerLabel: {
+    fontSize: 12,
+    color: FAINT,
+    fontWeight: '500',
+  },
+  footerTime: {
+    fontFamily: FONT_BOLD,
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 30,
+    color: INK,
+    includeFontPadding: false,
   },
 
   // ---- Chevron ----

@@ -458,7 +458,12 @@ function AppInner() {
                 onExpandHourly={() => setHourlyOpen(true)}
                 onAskAI={() => setChatOpen(true)}
               />
-              <DetailsView wx={wx} unit={unit} />
+              <DetailsView
+                wx={wx}
+                unit={unit}
+                onAskAI={() => setChatOpen(true)}
+                onShowDetails={showDetails}
+              />
             </ScrollView>
 
             {/* Stale-data banner after a failed refresh */}

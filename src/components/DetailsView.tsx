@@ -18,8 +18,12 @@ import Svg, {
   G,
 } from 'react-native-svg';
 import WeatherIcon from './WeatherIcon';
+import MetricTile from './MetricTile';
+import MetricIcon from './MetricIcon';
+import HourlyForecastCard from './HourlyForecastCard';
+import HighlightCard from './HighlightCard';
 import { fmtTemp } from '../utils/helpers';
-import { INK, MUTED, FAINT, HAIR, RAIN_BLUE } from '../utils/colors';
+import { INK, MUTED, FAINT, HAIR, RAIN_BLUE, TILE } from '../utils/colors';
 import type { WeatherScenario, DayTuple } from '../data/weatherData';
 
 // ---------------------------------------------------------------------------
@@ -122,13 +126,17 @@ function daylightDuration(sunrise: string, sunset: string): string {
 interface DetailsViewProps {
   wx: WeatherScenario;
   unit: 'C' | 'F';
+  /** Opens the AI chat (wired to the HighlightCard "View Highlights" pill). */
+  onAskAI?: () => void;
+  /** Optional hook for expanding the full details/hourly view. */
+  onShowDetails?: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit }) => {
+const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit, onAskAI }) => {
   const isNight = wx.isNight;
   const sunPct = wx.sunPct as number;
 
@@ -381,87 +389,94 @@ const DetailsView: React.FC<DetailsViewProps> = ({ wx, unit }) => {
       <Section index={sIdx++}>
         <Text style={styles.label}>CONDITIONS</Text>
 
-        <View style={styles.gridRow}>
-          {/* UV Index */}
-          <View style={styles.gridCell}>
-            <Text style={styles.cellLabel}>UV INDEX</Text>
-            <Text style={styles.cellValue}>{wx.uv}</Text>
-            <Text style={styles.cellUnit}>{wx.uvWord}</Text>
-            <Text style={styles.cellCaption}>
-              {wx.uv <= 2
-                ? 'Low for the rest of the day'
-                : wx.uv <= 5
-                  ? 'Moderate — sunscreen advised'
-                  : 'High — limit midday exposure'}
-            </Text>
+        <View style={styles.tileGrid}>
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="humidity" />}
+              label="Humidity"
+              value={wx.humidity}
+              unit="%"
+              bg={TILE.humidity}
+            />
           </View>
 
-          {/* Visibility */}
-          <View style={styles.gridCell}>
-            <Text style={styles.cellLabel}>VISIBILITY</Text>
-            <Text style={styles.cellValue}>{wx.vis}</Text>
-            <Text style={styles.cellUnit}>km</Text>
-            <Text style={styles.cellCaption}>
-              {wx.vis >= 20
-                ? 'Perfectly clear views'
-                : wx.vis >= 10
-                  ? 'Good visibility'
-                  : 'Reduced in mist'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.gridRow}>
-          {/* Wind */}
-          <View style={styles.gridCell}>
-            <Text style={styles.cellLabel}>WIND</Text>
-            <Text style={styles.cellValue}>{wx.wind}</Text>
-            <Text style={styles.cellUnit}>km/h</Text>
-            <Text style={styles.cellCaption}>
-              Gusts up to {wx.gust} km/h from {wx.dir}
-            </Text>
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="pressure" />}
+              label="Pressure"
+              value={wx.pressure}
+              unit="hPa"
+              bg={TILE.pressure}
+            />
           </View>
 
-          {/* Pressure */}
-          <View style={styles.gridCell}>
-            <Text style={styles.cellLabel}>PRESSURE</Text>
-            <Text style={styles.cellValue}>{wx.pressure}</Text>
-            <Text style={styles.cellUnit}>hPa</Text>
-            <Text style={styles.cellCaption}>
-              {wx.pressure >= 1013 ? 'Stable — fair weather' : 'Below average — unsettled'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.gridRow}>
-          {/* Air quality */}
-          <View style={styles.gridCell}>
-            <Text style={styles.cellLabel}>AIR QUALITY</Text>
-            <Text style={styles.cellValue}>{wx.aqi ?? '—'}</Text>
-            <Text style={styles.cellUnit}>US AQI</Text>
-            <Text style={styles.cellCaption}>
-              {wx.aqiWord ?? 'No air quality data available'}
-            </Text>
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="dew" />}
+              label="Dew Point"
+              value={`${fmtTemp(wx.dew, unit)}°`}
+              bg={TILE.dew}
+            />
           </View>
 
-          {/* Dew point */}
-          <View style={styles.gridCell}>
-            <Text style={styles.cellLabel}>DEW POINT</Text>
-            <Text style={styles.cellValue}>{fmtTemp(wx.dew, unit)}&deg;</Text>
-            <Text style={styles.cellUnit}>{unit === 'C' ? 'Celsius' : 'Fahrenheit'}</Text>
-            <Text style={styles.cellCaption}>
-              {wx.dew >= 18
-                ? 'Humid — air feels sticky'
-                : wx.dew >= 10
-                  ? 'Comfortable moisture levels'
-                  : 'Dry air'}
-            </Text>
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="wind" />}
+              label="Wind"
+              value={wx.wind}
+              unit="km/h"
+              bg={TILE.wind}
+            />
+          </View>
+
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="aqi" />}
+              label="Air Quality"
+              value={wx.aqi ?? '—'}
+              subtitle={wx.aqiWord}
+              bg={TILE.aqi}
+            />
+          </View>
+
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="uv" />}
+              label="UV"
+              value={wx.uv}
+              subtitle={wx.uvWord}
+              bg={TILE.uv}
+            />
+          </View>
+
+          <View style={styles.tileCell}>
+            <MetricTile
+              icon={<MetricIcon name="vis" />}
+              label="Visibility"
+              value={wx.vis}
+              unit="km"
+              bg={TILE.vis}
+            />
           </View>
         </View>
       </Section>
 
       {/* ================================================================= */}
-      {/* 5. FOOTER                                                         */}
+      {/* 5. HOURLY FORECAST                                                */}
+      {/* ================================================================= */}
+      <Section index={sIdx++}>
+        <HourlyForecastCard wx={wx} unit={unit} />
+      </Section>
+
+      {/* ================================================================= */}
+      {/* 6. HIGHLIGHTS                                                     */}
+      {/* ================================================================= */}
+      <Section index={sIdx++}>
+        <HighlightCard wx={wx} unit={unit} onPress={() => onAskAI?.()} />
+      </Section>
+
+      {/* ================================================================= */}
+      {/* 7. FOOTER                                                         */}
       {/* ================================================================= */}
       <Section index={sIdx++}>
         <View style={styles.footer}>
@@ -634,42 +649,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8b06a',
   },
 
-  // Conditions grid
-  gridRow: {
+  // Conditions metric-tile grid (2-column wrap)
+  tileGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  tileCell: {
+    width: '48%',
     marginTop: 12,
-  },
-  gridCell: {
-    flex: 1,
-    paddingRight: 12,
-    paddingBottom: 12,
-  },
-  cellLabel: {
-    fontFamily: FONT,
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 1,
-    color: FAINT,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  cellValue: {
-    fontFamily: FONT,
-    fontSize: 28,
-    fontWeight: '700',
-    color: INK,
-  },
-  cellUnit: {
-    fontFamily: FONT,
-    fontSize: 13,
-    color: MUTED,
-    marginBottom: 4,
-  },
-  cellCaption: {
-    fontFamily: FONT,
-    fontSize: 12,
-    color: FAINT,
-    lineHeight: 16,
   },
 
   // Footer

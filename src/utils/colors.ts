@@ -4,6 +4,19 @@ export const FAINT = 'rgba(21,19,26,0.34)';
 export const HAIR = 'rgba(21,19,26,0.14)';
 export const RAIN_BLUE = '#3f6fb0';
 
+// Solid background colors for metric tiles (white foreground text).
+// Each tone is tuned for WCAG AA contrast against '#fff'.
+export const TILE = {
+  humidity: RAIN_BLUE, // '#3f6fb0'
+  aqi: RAIN_BLUE, // '#3f6fb0'
+  pressure: INK, // '#15131a'
+  wind: INK, // '#15131a'
+  dew: '#2f8f63', // darkened green for white-text AA
+  uv: '#c9781f', // darkened amber for AA
+  vis: '#2f8f8f', // teal
+  fg: '#fff', // foreground text on tiles
+} as const;
+
 // Gradient color stops per weather condition
 export const GRADIENTS: Record<string, { colors: [string, string, ...string[]]; locations: [number, number, ...number[]] }> = {
   clear: {
