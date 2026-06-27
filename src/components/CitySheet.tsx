@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   StyleSheet,
   Animated,
@@ -13,6 +14,8 @@ import {
   Platform,
   Modal,
   ActivityIndicator,
+  ActionSheetIOS,
+  Alert,
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +27,7 @@ import { searchCities } from '../data/weatherApi';
 import type { CityCurrent } from '../data/weatherApi';
 import type { MyLocationState } from '../hooks/useMyLocation';
 import { fmtTemp } from '../utils/helpers';
+import { tapHaptic } from '../utils/haptics';
 import { INK, MUTED, FAINT, HAIR } from '../utils/colors';
 
 // ---------------------------------------------------------------------------
@@ -327,6 +331,44 @@ const CitySheet: React.FC<CitySheetProps> = ({
     if (located) onSelect(located);
   };
 
+  // Long-press menu for a saved city row: jump to it or (for custom cities)
+  // remove it. Tap still selects; this is the secondary, deliberate action.
+  const openCityActions = (city: City) => {
+    tapHaptic();
+    if (Platform.OS === 'ios') {
+      const options = ['Set as active location'];
+      let destructiveButtonIndex: number | undefined;
+      if (city.custom) {
+        options.push('Remove from list');
+        destructiveButtonIndex = options.length - 1;
+      }
+      options.push('Cancel');
+      const cancelButtonIndex = options.length - 1;
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title: city.name, options, cancelButtonIndex, destructiveButtonIndex },
+        (buttonIndex) => {
+          if (buttonIndex === 0) {
+            onSelect(city);
+          } else if (city.custom && buttonIndex === 1) {
+            onRemove(city.id);
+          }
+        },
+      );
+      return;
+    }
+
+    // Android (and any non-iOS): native ActionSheetIOS isn't available, so use Alert.
+    const buttons: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [
+      { text: 'Set as active location', onPress: () => onSelect(city) },
+    ];
+    if (city.custom) {
+      buttons.push({ text: 'Remove from list', style: 'destructive', onPress: () => onRemove(city.id) });
+    }
+    buttons.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert(city.name, undefined, buttons);
+  };
+
   const renderCityRow = (city: City) => {
     const isActive = city.id === activeCityId;
     const cur = cityWx[city.id];
@@ -334,13 +376,19 @@ const CitySheet: React.FC<CitySheetProps> = ({
       ? `${city.name}, ${fmtTemp(cur.temp, unit)} degrees, ${cur.label.toLowerCase()}`
       : city.name;
     return (
-      <TouchableOpacity
+      <Pressable
         key={city.id}
-        style={[styles.cityRow, isActive && styles.cityRowActive]}
+        style={({ pressed }) => [
+          styles.cityRow,
+          isActive && styles.cityRowActive,
+          pressed && styles.cityRowPressed,
+        ]}
         onPress={() => onSelect(city)}
-        activeOpacity={0.7}
+        onLongPress={() => openCityActions(city)}
+        delayLongPress={250}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
+        accessibilityHint="Long press for more options"
         accessibilityState={{ selected: isActive }}
       >
         <View style={styles.cityLeft}>
@@ -370,7 +418,7 @@ const CitySheet: React.FC<CitySheetProps> = ({
             </TouchableOpacity>
           )}
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -639,6 +687,10 @@ const styles = StyleSheet.create({
 
   cityRowActive: {
     backgroundColor: 'rgba(21,19,26,0.04)',
+  },
+
+  cityRowPressed: {
+    opacity: 0.7,
   },
 
   cityLeft: {

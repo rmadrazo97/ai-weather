@@ -8,11 +8,13 @@ import {
   ScrollView,
   Platform,
   Animated,
+  Pressable,
 } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WeatherIcon from './WeatherIcon';
 import { fmtTemp } from '../utils/helpers';
+import { tapHaptic } from '../utils/haptics';
 import { useLiveClock } from '../utils/liveClock';
 import { INK, MUTED, FAINT, HAIR, RAIN_BLUE } from '../utils/colors';
 import type { WeatherScenario } from '../data/weatherData';
@@ -259,6 +261,12 @@ function HourlyGraph({
   const svgW = HOURLY_COUNT * HOUR_COL_W;
   const pathD = catmullRomPath(points);
 
+  // Long-pressing any hourly column opens the expanded sheet.
+  const handleColLongPress = () => {
+    tapHaptic();
+    onExpand();
+  };
+
   return (
     <View style={styles.hourlySection}>
       {/* Header */}
@@ -285,9 +293,14 @@ function HourlyGraph({
           {/* Icons row */}
           <View style={styles.hourlyIconsRow}>
             {series.map((entry, i) => (
-              <View key={i} style={styles.hourlyCol}>
+              <Pressable
+                key={i}
+                style={styles.hourlyCol}
+                delayLongPress={250}
+                onLongPress={handleColLongPress}
+              >
                 <WeatherIcon cond={entry.cond} size={20} />
-              </View>
+              </Pressable>
             ))}
           </View>
 
@@ -302,33 +315,48 @@ function HourlyGraph({
           {/* Temp labels row */}
           <View style={styles.hourlyIconsRow}>
             {series.map((entry, i) => (
-              <View key={i} style={styles.hourlyCol}>
+              <Pressable
+                key={i}
+                style={styles.hourlyCol}
+                delayLongPress={250}
+                onLongPress={handleColLongPress}
+              >
                 <Text style={styles.hourlyTemp}>
                   {fmtTemp(entry.temp, unit)}{'\u00b0'}
                 </Text>
-              </View>
+              </Pressable>
             ))}
           </View>
 
           {/* Precip row */}
           <View style={styles.hourlyIconsRow}>
             {series.map((entry, i) => (
-              <View key={i} style={styles.hourlyCol}>
+              <Pressable
+                key={i}
+                style={styles.hourlyCol}
+                delayLongPress={250}
+                onLongPress={handleColLongPress}
+              >
                 {entry.pop > 0 ? (
                   <Text style={styles.hourlyPrecip}>{entry.pop}%</Text>
                 ) : (
                   <Text style={styles.hourlyPrecipHidden}>{' '}</Text>
                 )}
-              </View>
+              </Pressable>
             ))}
           </View>
 
           {/* Time labels row */}
           <View style={styles.hourlyIconsRow}>
             {series.map((entry, i) => (
-              <View key={i} style={styles.hourlyCol}>
+              <Pressable
+                key={i}
+                style={styles.hourlyCol}
+                delayLongPress={250}
+                onLongPress={handleColLongPress}
+              >
                 <Text style={styles.hourlyTime}>{entry.h}</Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>

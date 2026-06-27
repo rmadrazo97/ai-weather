@@ -36,6 +36,7 @@ import { saveWx, loadWx } from './src/data/weatherCache';
 import { GRADIENTS, INK, MUTED } from './src/utils/colors';
 import { useStorage } from './src/hooks/useStorage';
 import { useMyLocation } from './src/hooks/useMyLocation';
+import { deriveEvents, ensurePermission, schedule } from './src/notifications';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -105,6 +106,12 @@ function AppInner() {
   // Epoch ms of the last successful weather load, so a foreground resume can
   // decide whether the on-screen data has gone stale.
   const lastLoadAtRef = useRef(0);
+
+  // Local-first notifications: ask permission exactly once (on the first
+  // successful load) and remember the outcome so later loads only re-schedule
+  // when we're actually allowed to post.
+  const notifReadyRef = useRef(false);
+  const notifGrantedRef = useRef(false);
 
   // Mirror the latest unit into a ref so loadWeather can write the widget
   // snapshot with the current unit without taking `unit` as a dependency
@@ -188,6 +195,23 @@ function AppInner() {
       lastLoadAtRef.current = Date.now();
       saveWx(c.id, data);
       writeWidgetSnapshot(c, data, unitRef.current);
+
+      // Local-first notifications: on the first successful load ask permission
+      // once, then (re)derive + schedule from the fresh data. Fire-and-forget
+      // and fully guarded — a notification hiccup must never affect the load.
+      void (async () => {
+        try {
+          if (!notifReadyRef.current) {
+            notifReadyRef.current = true;
+            notifGrantedRef.current = await ensurePermission();
+          }
+          if (notifGrantedRef.current) {
+            await schedule(deriveEvents(data, Date.now()));
+          }
+        } catch {
+          // Notifications are best-effort; ignore failures entirely.
+        }
+      })();
     } catch {
       const cached = await loadWx(c.id);
       if (cached) {
